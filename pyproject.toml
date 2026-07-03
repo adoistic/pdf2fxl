@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdf2fxl"
+version = "0.1.0"
+description = "Convert image-only picture-book PDFs into fixed-layout EPUB + PPTX with editable OCR text."
+requires-python = ">=3.11"
+# NOTE: the LaMa inpainting backend (simple-lama-inpainting + torch) is installed
+# separately in Task 7 — it pins pillow<10, so it must be installed with --no-deps.
+# It is intentionally NOT a core dependency; nothing in the fast test suite needs it.
+dependencies = [
+  "pymupdf>=1.24",
+  "mistralai>=1.5",
+  "opencv-python-headless>=4.9",
+  "numpy>=1.26",
+  "pillow>=10.0",
+  "python-pptx>=1.0",
+  "lxml>=5.0",
+  "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+pdf2fxl = "pdf2fxl.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdf2fxl"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = ["slow: exercises the real LaMa model or epubcheck (deselect with -m 'not slow')"]
