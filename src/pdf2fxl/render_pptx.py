@@ -6,6 +6,7 @@ from pptx.util import Emu, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
+from .fittext import LINE_SPACING
 from .models import Page
 
 _EMU_PER_IN = 914400
@@ -45,8 +46,12 @@ def write_pptx(pages: List[Page], out_path: Path, aspect: Tuple[int, int] = (4, 
             tf = box.text_frame
             tf.word_wrap = True
             tf.vertical_anchor = MSO_ANCHOR.TOP
+            # Zero the default ~0.1in internal insets: they silently shrink the
+            # usable box and break the fit-to-box font size guarantee.
+            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
             para = tf.paragraphs[0]
             para.alignment = _ALIGN.get(b.align, PP_ALIGN.LEFT)
+            para.line_spacing = LINE_SPACING   # match the fit math + EPUB CSS
             run = para.add_run()
             run.text = b.text
             run.font.name = font_name

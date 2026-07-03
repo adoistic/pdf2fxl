@@ -12,21 +12,46 @@ def _ints(bbox: Tuple[float, float, float, float]) -> Tuple[int, int, int, int]:
 
 
 def block_text_mask(img_bgr: np.ndarray, bbox, dark_thresh: int = 128) -> np.ndarray:
-    """ROI-local mask: dark pixels -> 255 (text), else 0."""
+    """ROI-local mask of text pixels -> 255, polarity-aware.
+
+    Uses Otsu to pick the text/background split per block so anti-aliased glyph
+    edges are captured (a fixed threshold leaves halos that survive inpainting
+    as ghosts). Glyphs cover a minority of a text block, so if the "text" side
+    of the split covers more than half the ROI the polarity is inverted —
+    handling light-on-dark text (e.g. a white title on dark art). Falls back to
+    ``dark_thresh`` if Otsu finds no usable split.
+    """
     x, y, w, h = _ints(bbox)
     roi = img_bgr[y:y + h, x:x + w]
     if roi.size == 0:
         return np.zeros((max(h, 0), max(w, 0)), np.uint8)
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    _, m = cv2.threshold(gray, dark_thresh, 255, cv2.THRESH_BINARY_INV)
+    otsu, m = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    if otsu <= 0:
+        _, m = cv2.threshold(gray, dark_thresh, 255, cv2.THRESH_BINARY_INV)
+    if (m > 0).mean() > 0.5:
+        m = cv2.bitwise_not(m)
     return m
 
 
+_X_HEIGHT_RATIO = 0.6  # median glyph height (~x-height) as a fraction of the em
+
+
 def estimate_font_px(mask: np.ndarray) -> float:
-    """Median connected-component height ~= glyph height."""
+    """Estimate the em (font) size in px.
+
+    The median connected-component height approximates lowercase x-height, which
+    is ~half the em; dividing by that ratio recovers the true font size.
+    Measuring glyph height directly under-sizes rendered text by ~2x.
+    """
     n, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     heights = [int(stats[i, cv2.CC_STAT_HEIGHT]) for i in range(1, n)]
-    return float(np.median(heights)) if heights else 0.0
+    if not heights:
+        return 0.0
+    return float(np.median(heights)) / _X_HEIGHT_RATIO
+
+
+_GRAY_BGR = (0.114, 0.587, 0.299)  # luminance weights in BGR order
 
 
 def estimate_color(img_bgr: np.ndarray, bbox, mask: np.ndarray) -> str:
@@ -35,7 +60,23 @@ def estimate_color(img_bgr: np.ndarray, bbox, mask: np.ndarray) -> str:
     pix = roi[mask > 0]
     if len(pix) == 0:
         return "#000000"
-    b, g, r = (int(v) for v in np.median(pix, axis=0))
+    # Sample the stroke core: the quartile of masked pixels *farthest in
+    # luminance from the background*. Anti-aliased edges and stray art pixels
+    # inside the box blend toward the background and would wash the colour;
+    # comparing against the unmasked median keeps the polarity correct for
+    # both dark-on-light and light-on-dark text.
+    weights = np.array(_GRAY_BGR, np.float32)
+    gray = pix.astype(np.float32) @ weights
+    bg_pix = roi[mask == 0]
+    bg_lum = (float(np.median(bg_pix.astype(np.float32) @ weights))
+              if len(bg_pix) else 255.0)
+    if np.median(gray) <= bg_lum:      # text darker than background
+        core = pix[gray <= np.percentile(gray, 25)]
+    else:                              # light-on-dark text
+        core = pix[gray >= np.percentile(gray, 75)]
+    if len(core) == 0:
+        core = pix
+    b, g, r = (int(v) for v in np.median(core, axis=0))
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
 

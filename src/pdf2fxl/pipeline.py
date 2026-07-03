@@ -4,6 +4,7 @@ from typing import Callable, List, Optional, Tuple
 import cv2
 
 from .config import Config
+from .fittext import fit_font_px
 from .models import Page
 from .ingest import rasterize_page, trim_page, page_count
 from .ocr import parse_ocr_response, run_ocr
@@ -22,7 +23,8 @@ def _trim(img, cfg: Config):
 
 
 def convert_page(pdf_path: str, index: int, out_dir: Path, cfg: Config,
-                 ocr_fn: OcrFn, inpainter: Inpainter, api_key: str) -> Page:
+                 ocr_fn: OcrFn, inpainter: Inpainter, api_key: str,
+                 font_path: str = "assets/fonts/NotoSerif-Regular.ttf") -> Page:
     pages_dir = out_dir / "pages"; pages_dir.mkdir(parents=True, exist_ok=True)
     raw = rasterize_page(pdf_path, index, cfg.zoom)
     img = _trim(raw, cfg)
@@ -31,7 +33,10 @@ def convert_page(pdf_path: str, index: int, out_dir: Path, cfg: Config,
     resp = ocr_fn(img, cfg, api_key)
     blocks = parse_ocr_response(resp, (w, h), cfg)
     for b in blocks:
-        annotate_style(img, b, cfg.dark_thresh)
+        annotate_style(img, b, cfg.dark_thresh)   # color + align from pixels
+        # Font size is solved, not estimated: largest size whose wrapped text
+        # provably fits the block box when measured with the embedded font.
+        b.font_px = fit_font_px(b.text, b.bbox[2], b.bbox[3], font_path)
 
     mask = build_page_mask(img, blocks, cfg.dark_thresh, cfg.mask_dilate_px)
     clean = apply_inpainting(img, mask, inpainter)
@@ -58,7 +63,8 @@ def convert_book(pdf_path: str, out_dir: Path, cfg: Optional[Config] = None,
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
 
     pages: List[Page] = [
-        convert_page(pdf_path, i, out_dir, cfg, ocr_fn, inpainter, api_key)
+        convert_page(pdf_path, i, out_dir, cfg, ocr_fn, inpainter, api_key,
+                     font_path=font_path)
         for i in range(page_count(pdf_path))
     ]
 

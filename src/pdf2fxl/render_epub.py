@@ -18,10 +18,10 @@ CONTAINER_XML = """<?xml version="1.0" encoding="UTF-8"?>
 PAGE_CSS = """@font-face { font-family: "Noto Serif";
   src: url("../fonts/NotoSerif-Regular.ttf"); }
 html, body { margin: 0; padding: 0; }
-.page { position: relative; width: 100%; height: 100%; }
-.bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.page { position: relative; width: 100%; }
+.bg { display: block; width: 100%; height: auto; }
 .tb { position: absolute; margin: 0; font-family: "Noto Serif", serif;
-  line-height: 1.15; overflow: hidden; }
+  line-height: 1.2; overflow: visible; }
 """
 
 
@@ -42,7 +42,7 @@ def _page_xhtml(page: Page, img_name: str) -> str:
         x, y, bw, bh = b.bbox
         style = (
             f"left:{x / w * 100:.3f}%;top:{y / h * 100:.3f}%;"
-            f"width:{bw / w * 100:.3f}%;height:{bh / h * 100:.3f}%;"
+            f"width:{bw / w * 100:.3f}%;"
             f"font-size:{b.font_px:.2f}px;color:{b.color};text-align:{b.align};"
         )
         parts.append(f'<div class="tb" style="{style}">{html.escape(b.text)}</div>')
