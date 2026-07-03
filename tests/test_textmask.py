@@ -34,6 +34,12 @@ def test_estimate_align_left():
     m = block_text_mask(img, bbox)
     assert estimate_align(m, block_w=120) == "left"
 
+def test_block_text_mask_out_of_bounds_returns_zeros():
+    img = np.full((50, 50, 3), 255, np.uint8)
+    m = block_text_mask(img, bbox=(100, 100, 20, 10))   # fully outside the image
+    assert m.shape == (10, 20)
+    assert int((m > 0).sum()) == 0
+
 def test_build_page_mask_dilates_union():
     img = _canvas_with_glyphs()
     blocks = [Block(type="text", bbox=(20, 90, 120, 40), text="x")]

@@ -15,6 +15,8 @@ def block_text_mask(img_bgr: np.ndarray, bbox, dark_thresh: int = 128) -> np.nda
     """ROI-local mask: dark pixels -> 255 (text), else 0."""
     x, y, w, h = _ints(bbox)
     roi = img_bgr[y:y + h, x:x + w]
+    if roi.size == 0:
+        return np.zeros((max(h, 0), max(w, 0)), np.uint8)
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
     _, m = cv2.threshold(gray, dark_thresh, 255, cv2.THRESH_BINARY_INV)
     return m
@@ -64,7 +66,7 @@ def build_page_mask(img_bgr: np.ndarray, blocks: List[Block],
 
 
 def annotate_style(img_bgr: np.ndarray, block: Block, dark_thresh: int = 128) -> Block:
-    """Fill font_px/color/align on a copy of `block` from its pixels."""
+    """Fill font_px/color/align on `block` in place from its pixels; returns the same block."""
     m = block_text_mask(img_bgr, block.bbox, dark_thresh)
     block.font_px = estimate_font_px(m)
     block.color = estimate_color(img_bgr, block.bbox, m)
