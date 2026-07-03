@@ -33,7 +33,11 @@ def rasterize_page(pdf_path: str, index: int, zoom: float) -> np.ndarray:
     import fitz
     doc = fitz.open(pdf_path)
     try:
-        pix = doc[index].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        pix = doc[index].get_pixmap(
+            matrix=fitz.Matrix(zoom, zoom),
+            colorspace=fitz.csRGB,   # force 3-channel RGB regardless of PDF colorspace (CMYK-safe)
+            alpha=False,
+        )
         buf = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, pix.n)
         return cv2.cvtColor(buf, cv2.COLOR_RGB2BGR)
     finally:
