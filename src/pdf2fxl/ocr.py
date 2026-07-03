@@ -40,7 +40,7 @@ def run_ocr(image_bgr: np.ndarray, cfg: Config, api_key: str) -> dict:
     NOTE: OCR-4 kwargs (include_blocks, extract_footer) are passed defensively;
     confirm exact names against the installed SDK on first run.
     """
-    from mistralai import Mistral
+    from mistralai.client import Mistral
     ok, png = cv2.imencode(".png", image_bgr)
     if not ok:
         raise RuntimeError("failed to PNG-encode page image")
