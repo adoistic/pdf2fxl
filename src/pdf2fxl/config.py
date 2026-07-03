@@ -16,6 +16,6 @@ class Config:
     dark_thresh: int = 128                        # text-pixel threshold (grayscale)
     mask_dilate_px: int = 2
     max_block_span: float = 0.9                   # drop OCR blocks spanning more than this fraction of the page in BOTH dimensions (degenerate full-page catch-alls)
-    trim_strategy: str = "content"                # "content" | "trimbox" | "none"
+    trim_strategy: str = "auto"                   # "auto" (trimbox, else content) | "trimbox" | "content" | "none"
     font_map: Dict[str, str] = field(default_factory=_default_font_map)
     pptx_aspect: Tuple[int, int] = (4, 3)         # deck aspect ratio (w, h)

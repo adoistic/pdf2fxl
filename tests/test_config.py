@@ -9,7 +9,7 @@ def test_defaults():
     assert c.font_map["Latn"] == "Noto Serif"
     assert c.mask_dilate_px == 2
     assert c.max_block_span == 0.9
-    assert c.trim_strategy == "content"
+    assert c.trim_strategy == "auto"
 
 def test_override():
     c = Config(zoom=2.0, mask_dilate_px=5)

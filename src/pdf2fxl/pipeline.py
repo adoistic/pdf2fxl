@@ -6,7 +6,7 @@ import cv2
 from .config import Config
 from .fittext import fit_font_px
 from .models import Page
-from .ingest import rasterize_page, trim_page, page_count
+from .ingest import rasterize_page, trim_page, page_count, trimbox_px
 from .ocr import parse_ocr_response, run_ocr
 from .textmask import annotate_style, build_page_mask
 from .inpaint import apply_inpainting, Inpainter, LamaInpainter
@@ -16,10 +16,15 @@ from .render_pptx import write_pptx
 OcrFn = Callable[..., dict]
 
 
-def _trim(img, cfg: Config):
+def _trim(img, cfg: Config, pdf_path: str, index: int):
     if cfg.trim_strategy == "none":
         return img
-    return trim_page(img, trim=None)   # content-based trim
+    box = None
+    if cfg.trim_strategy in ("auto", "trimbox"):
+        # Exact crop from the PDF's TrimBox when the file carries one
+        # (print-ready exports do); falls back to the content heuristic.
+        box = trimbox_px(pdf_path, index, cfg.zoom)
+    return trim_page(img, trim=box)
 
 
 def convert_page(pdf_path: str, index: int, out_dir: Path, cfg: Config,
@@ -27,7 +32,7 @@ def convert_page(pdf_path: str, index: int, out_dir: Path, cfg: Config,
                  font_path: str = "assets/fonts/NotoSerif-Regular.ttf") -> Page:
     pages_dir = out_dir / "pages"; pages_dir.mkdir(parents=True, exist_ok=True)
     raw = rasterize_page(pdf_path, index, cfg.zoom)
-    img = _trim(raw, cfg)
+    img = _trim(raw, cfg, pdf_path, index)
     h, w = img.shape[:2]
 
     resp = ocr_fn(img, cfg, api_key)

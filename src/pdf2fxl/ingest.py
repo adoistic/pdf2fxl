@@ -51,3 +51,31 @@ def page_count(pdf_path: str) -> int:
         return doc.page_count
     finally:
         doc.close()
+
+
+def trimbox_px(pdf_path: str, index: int, zoom: float
+               ) -> Optional[Tuple[int, int, int, int]]:
+    """The page's TrimBox in raster pixel coords, or None if there is none.
+
+    Print-ready PDFs (InDesign exports) carry an exact TrimBox — the printed
+    page inside the crop marks. Cropping to it is deterministic and beats any
+    content heuristic (which can cut off e.g. a cover title floating on white).
+    Returns None when the TrimBox doesn't shrink the MediaBox.
+
+    PDF box coordinates have a bottom-left origin while raster rows grow
+    downward, so vertical offsets are flipped against the MediaBox top.
+    """
+    import fitz
+    doc = fitz.open(pdf_path)
+    try:
+        page = doc[index]
+        tb, mb = page.trimbox, page.mediabox
+        if tb == mb:
+            return None
+        x0 = int(round((tb.x0 - mb.x0) * zoom))
+        x1 = int(round((tb.x1 - mb.x0) * zoom))
+        y0 = int(round((mb.y1 - tb.y1) * zoom))
+        y1 = int(round((mb.y1 - tb.y0) * zoom))
+        return (x0, y0, x1, y1)
+    finally:
+        doc.close()
