@@ -1,6 +1,7 @@
 # Shared fixtures are added by later tasks.
 import numpy as np
 import pytest
+from PIL import Image
 
 
 @pytest.fixture
@@ -34,3 +35,18 @@ def ocr_response():
              "bottom_right_x": 600, "bottom_right_y": 500, "content": ""},
         ],
     }]}
+
+
+class FakeInpainter:
+    """Deterministic stand-in: paints masked pixels solid red, leaves the rest."""
+    def __call__(self, image: Image.Image, mask: Image.Image) -> Image.Image:
+        import numpy as np
+        rgb = np.array(image.convert("RGB"))
+        m = np.array(mask.convert("L")) > 0
+        rgb[m] = (255, 0, 0)
+        return Image.fromarray(rgb)
+
+
+@pytest.fixture
+def fake_inpainter():
+    return FakeInpainter()
