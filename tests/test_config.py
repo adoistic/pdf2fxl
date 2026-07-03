@@ -8,6 +8,7 @@ def test_defaults():
     assert "text" in c.keep_block_types
     assert c.font_map["Latn"] == "Noto Serif"
     assert c.mask_dilate_px == 2
+    assert c.max_block_span == 0.9
     assert c.trim_strategy == "content"
 
 def test_override():

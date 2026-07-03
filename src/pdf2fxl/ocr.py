@@ -25,9 +25,16 @@ def parse_ocr_response(resp: dict, page_size_px: Tuple[int, int],
             continue
         x0 = b["top_left_x"] * sx; y0 = b["top_left_y"] * sy
         x1 = b["bottom_right_x"] * sx; y1 = b["bottom_right_y"] * sy
+        text = (b.get("content") or "").strip()
+        if not text:
+            continue
+        bw = x1 - x0; bh = y1 - y0
+        if (bw >= cfg.max_block_span * page_size_px[0] and
+                bh >= cfg.max_block_span * page_size_px[1]):
+            continue
         blocks.append(Block(
-            type=t, bbox=(x0, y0, x1 - x0, y1 - y0),
-            text=(b.get("content") or "").strip(),
+            type=t, bbox=(x0, y0, bw, bh),
+            text=text,
             reading_order=order, confidence=float(b.get("confidence", 1.0)),
         ))
         order += 1
