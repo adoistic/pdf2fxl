@@ -6,6 +6,7 @@ import html
 import uuid
 import zipfile
 
+from .fittext import font_family
 from .models import Page
 
 CONTAINER_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -15,13 +16,16 @@ CONTAINER_XML = """<?xml version="1.0" encoding="UTF-8"?>
 </container>
 """
 
-PAGE_CSS = """@font-face { font-family: "Noto Serif";
-  src: url("../fonts/NotoSerif-Regular.ttf"); }
-html, body { margin: 0; padding: 0; }
-.page { position: relative; width: 100%; }
-.bg { display: block; width: 100%; height: auto; }
-.tb { position: absolute; margin: 0; font-family: "Noto Serif", serif;
-  line-height: 1.2; overflow: visible; }
+def _page_css(font_file: str, family: str) -> str:
+    """CSS bound to the actually-embedded font (family + file), so a per-script
+    ``--font`` renders instead of falling back to a missing hardcoded face."""
+    return f"""@font-face {{ font-family: "{family}";
+  src: url("../fonts/{font_file}"); }}
+html, body {{ margin: 0; padding: 0; }}
+.page {{ position: relative; width: 100%; }}
+.bg {{ display: block; width: 100%; height: auto; }}
+.tb {{ position: absolute; margin: 0; font-family: "{family}", serif;
+  line-height: 1.2; overflow: visible; }}
 """
 
 
@@ -107,11 +111,13 @@ def write_epub(pages: List[Page], out_path: Path, title: str, language: str,
                font_path: str) -> Path:
     out_path = Path(out_path)
     font_name = Path(font_path).name
+    family = font_family(font_path)
     modified = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with zipfile.ZipFile(out_path, "w") as z:
         z.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
         z.writestr("META-INF/container.xml", CONTAINER_XML, zipfile.ZIP_DEFLATED)
-        z.writestr("OEBPS/styles/page.css", PAGE_CSS, zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/styles/page.css", _page_css(font_name, family),
+                   zipfile.ZIP_DEFLATED)
         z.write(font_path, f"OEBPS/fonts/{font_name}", zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/content.opf",
                    _opf(pages, title, language, font_name, modified),

@@ -16,6 +16,18 @@ def _one_page(tmp_path):
     return page
 
 
+def test_epub_css_binds_to_embedded_font(tmp_path):
+    out = tmp_path / "book.epub"
+    write_epub([_one_page(tmp_path)], out, title="T", language="en",
+               font_path="assets/fonts/NotoSerif-Regular.ttf")
+    with zipfile.ZipFile(out) as z:
+        css = z.read("OEBPS/styles/page.css").decode()
+    # @font-face src and .tb family reference the real embedded font, not a
+    # hardcoded name (this is what makes --font swap in an Indic face)
+    assert 'src: url("../fonts/NotoSerif-Regular.ttf")' in css
+    assert '"Noto Serif"' in css
+
+
 def test_write_epub_is_valid_zip_with_mimetype_first(tmp_path):
     out = tmp_path / "book.epub"
     write_epub([_one_page(tmp_path)], out, title="Test", language="en",

@@ -26,6 +26,19 @@ def _font(font_path: str, px: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(font_path, px)
 
 
+def font_family(font_path: str) -> str:
+    """The font's family name from its TTF name table.
+
+    Used so the EPUB ``@font-face``/CSS and the PPTX run font name reference the
+    actual embedded font (e.g. "Noto Serif Devanagari") rather than a hardcoded
+    "Noto Serif" — which is what lets ``--font`` swap in a per-script face.
+    """
+    try:
+        return _font(font_path, 20).getname()[0]
+    except Exception:
+        return "serif"
+
+
 def wrapped_line_widths(text: str, px: int, max_w: float,
                         font_path: str) -> Optional[List[float]]:
     """Greedy word-wrap `text` at size `px`; return each line's measured width.

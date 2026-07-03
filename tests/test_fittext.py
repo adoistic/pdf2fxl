@@ -1,4 +1,5 @@
-from pdf2fxl.fittext import fit_font_px, wrapped_line_widths, LINE_SPACING
+from pdf2fxl.fittext import (fit_font_px, wrapped_line_widths, font_family,
+                             LINE_SPACING)
 
 FONT = "assets/fonts/NotoSerif-Regular.ttf"
 LOREM = ("Anita was a delightful painter. She had emerged successful in "
@@ -47,3 +48,11 @@ def test_tiny_box_clamps_to_min():
 
 def test_empty_text_returns_min():
     assert fit_font_px("   ", 400.0, 200.0, FONT) == 8.0
+
+
+def test_font_family_reads_name_table():
+    assert font_family(FONT) == "Noto Serif"
+
+
+def test_font_family_bad_path_falls_back():
+    assert font_family("/no/such/font.ttf") == "serif"

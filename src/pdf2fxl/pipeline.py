@@ -4,7 +4,7 @@ from typing import Callable, List, Optional, Tuple
 import cv2
 
 from .config import Config
-from .fittext import fit_font_px
+from .fittext import fit_font_px, font_family
 from .models import Page
 from .ingest import rasterize_page, trim_page, page_count, trimbox_px
 from .ocr import parse_ocr_response, run_ocr
@@ -76,5 +76,5 @@ def convert_book(pdf_path: str, out_dir: Path, cfg: Optional[Config] = None,
     epub = out_dir / f"{title}.epub"
     pptx = out_dir / f"{title}.pptx"
     write_epub(pages, epub, title=title, language=language, font_path=font_path)
-    write_pptx(pages, pptx, aspect=cfg.pptx_aspect, font_name=cfg.font_map["Latn"])
+    write_pptx(pages, pptx, aspect=cfg.pptx_aspect, font_name=font_family(font_path))
     return epub, pptx

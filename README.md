@@ -22,9 +22,23 @@ baked-in printed text with real, editable text via Mistral OCR 4 + LaMa inpainti
     pytest -q -m 'not slow'      # fast, deterministic (fakes for OCR + inpaint)
     pytest -m slow               # real LaMa (+ epubcheck if installed)
 
+## Languages beyond Latin
+Mistral OCR reads Indic and many other scripts natively. Point `--font` at a face that
+covers the script and the EPUB embeds the right glyphs:
+
+    pdf2fxl book.pdf -o out/ --title "..." --font assets/fonts/NotoSerifDevanagari-Regular.ttf   # Hindi
+    pdf2fxl book.pdf -o out/ --title "..." --font assets/fonts/NotoSerifOriya-Regular.ttf         # Odia
+
+The EPUB embeds the font, so it renders anywhere. PPTX only *names* the font (the format
+can't embed fonts), so a PPTX renders faithfully only where that font is installed.
+
 ## License
-MIT — see [LICENSE](LICENSE). The embedded [Noto Serif](https://fonts.google.com/noto)
-font is licensed separately under the SIL Open Font License 1.1.
+Project code: MIT — see [LICENSE](LICENSE).
+
+Bundled fonts: the [Noto](https://fonts.google.com/noto) fonts in `assets/fonts/`
+(Noto Serif, Noto Serif Devanagari, Noto Serif Oriya) are © The Noto Project Authors,
+licensed under the SIL Open Font License 1.1 — see
+[assets/fonts/NOTICE.md](assets/fonts/NOTICE.md) and [assets/fonts/OFL.txt](assets/fonts/OFL.txt).
 
 ## Known quality caveats
 - On watercolor-heavy pages where text overlaps detailed artwork, LaMa may leave smudges or produce a blurry patch rather than a clean fill — this is expected behaviour of the inpainting backend on CPU.
