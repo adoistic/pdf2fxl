@@ -30,14 +30,18 @@ def _load_dotenv(path: str = ".env") -> None:
 @click.option("--language", default="en", show_default=True)
 @click.option("--font", "font_path", default="assets/fonts/NotoSerif-Regular.ttf",
               show_default=True, type=click.Path())
-def main(pdf: str, out_dir: str, title: str, language: str, font_path: str) -> None:
+@click.option("--dpi", default=200, show_default=True, type=int,
+              help="Raster resolution.")
+def main(pdf: str, out_dir: str, title: str, language: str, font_path: str,
+         dpi: int) -> None:
     """Convert a picture-book PDF into a fixed-layout EPUB and a PPTX."""
     _load_dotenv()
     api_key = os.environ.get("MISTRAL_API_KEY", "")
     if not api_key:
         raise click.ClickException("MISTRAL_API_KEY is not set (environment or .env).")
     title = title or Path(pdf).stem
-    epub, pptx = convert_book(pdf, Path(out_dir), cfg=Config(), api_key=api_key,
+    cfg = Config(zoom=dpi / 72)
+    epub, pptx = convert_book(pdf, Path(out_dir), cfg=cfg, api_key=api_key,
                               title=title, language=language, font_path=font_path)
     click.echo(f"Wrote {epub}")
     click.echo(f"Wrote {pptx}")
