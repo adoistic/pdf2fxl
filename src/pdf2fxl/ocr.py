@@ -3,9 +3,19 @@ from typing import List, Tuple
 import base64
 import cv2
 import numpy as np
+import re
 
 from .models import Block
 from .config import Config
+
+
+def _clean_text(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r"^#{1,6}\s*", "", s)      # leading markdown heading marker
+    s = re.sub(r"^[-*>]\s+", "", s)       # leading list/quote marker
+    s = re.sub(r"\s*\n\s*", " ", s)       # newlines -> single space
+    s = re.sub(r"\s{2,}", " ", s)         # collapse runs of whitespace
+    return s.strip()
 
 
 def parse_ocr_response(resp: dict, page_size_px: Tuple[int, int],
@@ -25,7 +35,7 @@ def parse_ocr_response(resp: dict, page_size_px: Tuple[int, int],
             continue
         x0 = b["top_left_x"] * sx; y0 = b["top_left_y"] * sy
         x1 = b["bottom_right_x"] * sx; y1 = b["bottom_right_y"] * sy
-        text = (b.get("content") or "").strip()
+        text = _clean_text(b.get("content"))
         if not text:
             continue
         bw = x1 - x0; bh = y1 - y0

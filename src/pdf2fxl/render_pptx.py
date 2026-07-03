@@ -21,9 +21,14 @@ def _hex_to_rgb(c: str) -> RGBColor:
 def write_pptx(pages: List[Page], out_path: Path, aspect: Tuple[int, int] = (4, 3),
                font_name: str = "Noto Serif", slide_height_in: float = 7.5) -> Path:
     prs = Presentation()
-    aw, ah = aspect
     prs.slide_height = Emu(int(slide_height_in * _EMU_PER_IN))
-    prs.slide_width = Emu(int(slide_height_in * aw / ah * _EMU_PER_IN))
+    if pages:
+        pw0, ph0 = pages[0].page_size_px
+        page_ratio = pw0 / ph0
+    else:
+        aw, ah = aspect
+        page_ratio = aw / ah
+    prs.slide_width = Emu(int(slide_height_in * page_ratio * _EMU_PER_IN))
     slide_w, slide_h = int(prs.slide_width), int(prs.slide_height)
     slide_h_pt = slide_height_in * 72
     blank = prs.slide_layouts[6]

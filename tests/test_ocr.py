@@ -1,6 +1,22 @@
 from pdf2fxl.ocr import parse_ocr_response
 from pdf2fxl.config import Config
 
+def test_parser_strips_markdown_heading():
+    resp = {"pages":[{"index":0,"dimensions":{"width":1000,"height":750},
+        "blocks":[{"type":"title","top_left_x":100,"top_left_y":50,
+                   "bottom_right_x":500,"bottom_right_y":120,
+                   "content":"# Little Elephant"}]}]}
+    blocks = parse_ocr_response(resp, (1000,750), Config())
+    assert blocks[0].text == "Little Elephant"
+
+def test_parser_normalizes_newlines():
+    resp = {"pages":[{"index":0,"dimensions":{"width":1000,"height":750},
+        "blocks":[{"type":"text","top_left_x":100,"top_left_y":200,
+                   "bottom_right_x":500,"bottom_right_y":300,
+                   "content":"line one\nline two"}]}]}
+    blocks = parse_ocr_response(resp, (1000,750), Config())
+    assert blocks[0].text == "line one line two"
+
 def test_parser_keeps_text_drops_footer_and_image(ocr_response):
     cfg = Config()
     blocks = parse_ocr_response(ocr_response, page_size_px=(2000, 1500), cfg=cfg)
