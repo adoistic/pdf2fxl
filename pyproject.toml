@@ -7,13 +7,15 @@ name = "pdf2fxl"
 version = "0.1.0"
 description = "Convert image-only picture-book PDFs into fixed-layout EPUB + PPTX with editable OCR text."
 requires-python = ">=3.11"
+# NOTE: the LaMa inpainting backend (simple-lama-inpainting + torch) is installed
+# separately in Task 7 — it pins pillow<10, so it must be installed with --no-deps.
+# It is intentionally NOT a core dependency; nothing in the fast test suite needs it.
 dependencies = [
   "pymupdf>=1.24",
   "mistralai>=1.5",
   "opencv-python-headless>=4.9",
   "numpy>=1.26",
   "pillow>=10.0",
-  "simple-lama-inpainting>=0.1.2",
   "python-pptx>=1.0",
   "lxml>=5.0",
   "click>=8.1",
