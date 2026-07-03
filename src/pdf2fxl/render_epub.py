@@ -1,7 +1,9 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 import html
+import uuid
 import zipfile
 
 from .models import Page
@@ -48,7 +50,9 @@ def _page_xhtml(page: Page, img_name: str) -> str:
     return "\n".join(parts)
 
 
-def _opf(pages: List[Page], title: str, language: str, font_name: str) -> str:
+def _opf(pages: List[Page], title: str, language: str, font_name: str,
+         modified: str) -> str:
+    book_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, "pdf2fxl:" + title)
     manifest = [
         '<item id="css" href="styles/page.css" media-type="text/css"/>',
         f'<item id="font" href="fonts/{font_name}" '
@@ -70,9 +74,10 @@ def _opf(pages: List[Page], title: str, language: str, font_name: str) -> str:
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid"
          prefix="rendition: http://www.idpf.org/vocab/rendition/#">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="bookid">urn:uuid:pdf2fxl-{html.escape(title)}</dc:identifier>
+    <dc:identifier id="bookid">urn:uuid:{book_uuid}</dc:identifier>
     <dc:title>{html.escape(title)}</dc:title>
     <dc:language>{language}</dc:language>
+    <meta property="dcterms:modified">{modified}</meta>
     <meta property="rendition:layout">pre-paginated</meta>
     <meta property="rendition:orientation">landscape</meta>
     <meta property="rendition:spread">both</meta>
@@ -91,6 +96,7 @@ def _nav(pages: List[Page], title: str) -> str:
     lis = "".join(f'<li><a href="page-{i:02d}.xhtml">Page {i + 1}</a></li>'
                   for i in range(len(pages)))
     return f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head><meta charset="utf-8"/><title>{html.escape(title)}</title></head>
 <body><nav epub:type="toc" id="toc"><ol>{lis}</ol></nav></body></html>
@@ -101,12 +107,14 @@ def write_epub(pages: List[Page], out_path: Path, title: str, language: str,
                font_path: str) -> Path:
     out_path = Path(out_path)
     font_name = Path(font_path).name
+    modified = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with zipfile.ZipFile(out_path, "w") as z:
         z.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
         z.writestr("META-INF/container.xml", CONTAINER_XML, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/styles/page.css", PAGE_CSS, zipfile.ZIP_DEFLATED)
         z.write(font_path, f"OEBPS/fonts/{font_name}", zipfile.ZIP_DEFLATED)
-        z.writestr("OEBPS/content.opf", _opf(pages, title, language, font_name),
+        z.writestr("OEBPS/content.opf",
+                   _opf(pages, title, language, font_name, modified),
                    zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/nav.xhtml", _nav(pages, title), zipfile.ZIP_DEFLATED)
         for i, page in enumerate(pages):
