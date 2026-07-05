@@ -42,3 +42,36 @@ def test_devanagari_numeral_prefix():
 def test_no_numbering_returns_zero():
     assert parse_numbering("Introduction") == 0
     assert parse_numbering("Opportunity: consider this") == 0
+
+
+from pdf2fxl.reflow.hierarchy import assign_levels
+
+
+def _h(size, text):
+    return Segment(page_index=0, type="title", bbox=(0, 0, 10, 10), text=text,
+                   size_px=size)
+
+
+def test_numbering_drives_levels_when_present():
+    body = [_seg("text", 10.0, "x" * 300)]
+    heads = [_h(18, "1. Introduction"), _h(15, "1.2 History"),
+             _h(13, "1.2.1 Early")]
+    assign_levels(heads + body)
+    assert [h.level for h in heads] == [1, 2, 3]
+
+
+def test_size_tiers_when_no_numbering():
+    body = [_seg("text", 10.0, "x" * 300)]
+    heads = [_h(24, "Part Title"), _h(16, "Section"), _h(16, "Another Section"),
+             _h(12, "Small Sub")]
+    assign_levels(heads + body)
+    # largest size -> H1, next distinct tier -> H2, next -> H3
+    assert heads[0].level == 1
+    assert heads[1].level == 2 and heads[2].level == 2
+    assert heads[3].level == 3
+
+
+def test_non_headings_stay_level_zero():
+    body = [_seg("text", 10.0, "x" * 300)]
+    assign_levels(body)
+    assert body[0].level == 0

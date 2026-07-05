@@ -40,3 +40,49 @@ def parse_numbering(text: str) -> int:
     if _ROMAN.match(text) or _CHAPTER.match(text) or _DEVA_NUM.match(text):
         return 1
     return 0
+
+
+def _tier_levels(sizes: List[float], rel_gap: float = 0.06) -> Dict[float, int]:
+    """Map each distinct size to a 1-based rank tier. Sizes within rel_gap of the
+    current tier's reference collapse into the same tier (largest = tier 1)."""
+    uniq = sorted(set(sizes), reverse=True)
+    levels: Dict[float, int] = {}
+    tier = 1
+    ref = uniq[0] if uniq else 0.0
+    for sz in uniq:
+        if ref > 0 and (ref - sz) / ref > rel_gap:
+            tier += 1
+            ref = sz
+        levels[sz] = tier
+    return levels
+
+
+def assign_levels(segments: List[Segment], max_level: int = 6) -> None:
+    """Set .level (1..max_level) on every heading Segment, book-globally.
+    Numbering depth is authoritative where present; remaining headings are tiered
+    by measured size. Non-headings keep level 0."""
+    heads = [s for s in segments if is_heading_type(s.type)]
+    if not heads:
+        return
+    numbered = [(s, parse_numbering(s.text)) for s in heads]
+    if any(depth > 0 for _, depth in numbered):
+        # Learn the typical size for each numbering depth, then classify the
+        # unnumbered headings by nearest depth-size.
+        by_depth: Dict[int, List[float]] = defaultdict(list)
+        for s, depth in numbered:
+            if depth > 0 and s.size_px > 0:
+                by_depth[depth].append(s.size_px)
+        avg = {d: sum(v) / len(v) for d, v in by_depth.items() if v}
+        for s, depth in numbered:
+            if depth > 0:
+                s.level = min(depth, max_level)
+            elif avg:
+                nearest = min(avg, key=lambda d: abs(avg[d] - s.size_px))
+                s.level = min(nearest, max_level)
+            else:
+                s.level = 1
+        return
+    # No numbering anywhere: pure size tiers.
+    levels = _tier_levels([s.size_px for s in heads])
+    for s in heads:
+        s.level = min(levels.get(s.size_px, 1), max_level)
