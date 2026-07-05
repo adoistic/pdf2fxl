@@ -19,3 +19,26 @@ def test_body_size_is_the_char_mass_peak():
 
 def test_body_size_empty_returns_zero():
     assert body_size([]) == 0.0
+
+
+from pdf2fxl.reflow.hierarchy import parse_numbering
+
+
+def test_dotted_decimal_depth():
+    assert parse_numbering("1. Introduction") == 1
+    assert parse_numbering("1.2 Historical Perspective") == 2
+    assert parse_numbering("1.2.1. Early Discoveries") == 3
+
+
+def test_roman_and_chapter_are_top_level():
+    assert parse_numbering("IV. Methods") == 1
+    assert parse_numbering("Chapter 3 The Gut") == 1
+
+
+def test_devanagari_numeral_prefix():
+    assert parse_numbering("२. प्रकरण") == 1
+
+
+def test_no_numbering_returns_zero():
+    assert parse_numbering("Introduction") == 0
+    assert parse_numbering("Opportunity: consider this") == 0
