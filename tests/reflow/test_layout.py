@@ -28,3 +28,26 @@ def test_forced_single_mode_never_splits():
     segs = [_seg(50), _seg(600)]
     detect_columns(segs, page_width=page_w, mode="single")
     assert all(s.column == 0 for s in segs)
+
+
+from pdf2fxl.reflow.layout import strip_running
+
+
+def _mk(page_index, text, y, h_page=1000):
+    return Segment(page_index=page_index, type="text", bbox=(50, y, 200, 20),
+                   text=text)
+
+
+def test_removes_page_numbers_and_repeated_running_heads():
+    pages = []
+    for p in range(4):
+        pages.append([
+            _mk(p, str(12 + p), y=970),               # page number in bottom band
+            _mk(p, "The Book Title", y=975),          # repeated running head
+            _mk(p, f"Unique body text {p}", y=500),   # real content
+        ])
+    kept = strip_running(pages, page_height=1000)
+    flat = [s.text for page in kept for s in page]
+    assert all(not t.isdigit() for t in flat)
+    assert "The Book Title" not in flat
+    assert any(t.startswith("Unique body text") for t in flat)
