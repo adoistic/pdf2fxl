@@ -6,3 +6,4 @@ out/
 .venv/
 .env
 .env.*
+.claude/settings.local.json

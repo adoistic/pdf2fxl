@@ -25,9 +25,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+web = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
 
 [project.scripts]
 pdf2fxl = "pdf2fxl.cli:main"
+pdf2fxl-web = "pdf2fxl.web.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdf2fxl"]
