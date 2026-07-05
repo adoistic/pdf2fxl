@@ -35,3 +35,23 @@ def test_blank_region_is_safe():
     measure_segment(img, seg)
     assert seg.size_px == 0.0
     assert seg.n_lines == 1
+
+
+from pdf2fxl.reflow.typesize import detect_weight_centering
+
+
+def test_centered_block_flagged():
+    # ink only in the middle third of the crop width
+    img = np.full((40, 300), 255, np.uint8)
+    img[10:30, 120:180] = 0
+    seg = Segment(page_index=0, type="title", bbox=(0, 0, 300, 40), text="Hi")
+    detect_weight_centering(img, seg, page_width=300)
+    assert seg.centered is True
+
+
+def test_left_flush_block_not_centered():
+    img = np.full((40, 300), 255, np.uint8)
+    img[10:30, 0:60] = 0
+    seg = Segment(page_index=0, type="title", bbox=(0, 0, 300, 40), text="Hi")
+    detect_weight_centering(img, seg, page_width=300)
+    assert seg.centered is False

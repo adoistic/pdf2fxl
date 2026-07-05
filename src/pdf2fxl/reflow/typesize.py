@@ -35,3 +35,27 @@ def measure_segment(gray: np.ndarray, seg: Segment, dark_thresh: int = 128) -> N
     thicknesses = [e - s for s, e in bands]
     seg.n_lines = len(bands)
     seg.size_px = float(np.median(thicknesses))
+
+
+def detect_weight_centering(gray: np.ndarray, seg: Segment, page_width: float,
+                            dark_thresh: int = 128) -> None:
+    """Set seg.centered from ink column extent vs the page width, and seg.bold
+    from ink density within the ink rows. Mutates seg in place."""
+    x, y, w, h = (int(round(v)) for v in seg.bbox)
+    x = max(0, x); y = max(0, y)
+    crop = gray[y:y + h, x:x + w]
+    if crop.size == 0:
+        return
+    dark = crop < dark_thresh
+    cols = np.where(dark.any(axis=0))[0]
+    if cols.size:
+        left = x + cols[0]
+        right = x + cols[-1]
+        left_margin = left / page_width
+        right_margin = (page_width - right) / page_width
+        # centered: comparable margins on both sides and not spanning full width
+        span = (right - left) / page_width
+        seg.centered = bool(span < 0.85 and abs(left_margin - right_margin) < 0.08)
+    rows = dark.any(axis=1)
+    if rows.any():
+        seg.bold = bool(float(dark[rows].mean()) > 0.30)
