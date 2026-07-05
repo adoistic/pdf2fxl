@@ -51,3 +51,37 @@ def test_removes_page_numbers_and_repeated_running_heads():
     assert all(not t.isdigit() for t in flat)
     assert "The Book Title" not in flat
     assert any(t.startswith("Unique body text") for t in flat)
+
+
+from pdf2fxl.reflow.layout import order_segments, merge_dropcaps, rejoin_paragraphs
+
+
+def test_order_left_column_before_right_then_top_down():
+    r1 = Segment(0, "text", (600, 10, 200, 20), "right-top"); r1.column = 1
+    l1 = Segment(0, "text", (50, 40, 200, 20), "left-lower"); l1.column = 0
+    l0 = Segment(0, "text", (50, 10, 200, 20), "left-top"); l0.column = 0
+    ordered = order_segments([r1, l1, l0])
+    assert [s.text for s in ordered] == ["left-top", "left-lower", "right-top"]
+
+
+def test_dropcap_merges_into_next_paragraph():
+    cap = Segment(0, "text", (50, 100, 40, 40), "S", size_px=40)
+    para = Segment(0, "text", (95, 100, 300, 120), "chool begins here.", size_px=10)
+    out = merge_dropcaps([cap, para], body_px=10.0)
+    assert len(out) == 1
+    assert out[0].text.startswith("School begins here")
+
+
+def test_rejoin_paragraph_split_across_pages():
+    a = Segment(0, "text", (0, 0, 10, 10), "the sentence continues")
+    b = Segment(1, "text", (0, 0, 10, 10), "onto the next page.")
+    out = rejoin_paragraphs([a, b])
+    assert len(out) == 1
+    assert out[0].text == "the sentence continues onto the next page."
+
+
+def test_rejoin_keeps_separate_when_sentence_ends():
+    a = Segment(0, "text", (0, 0, 10, 10), "A finished sentence.")
+    b = Segment(1, "text", (0, 0, 10, 10), "Another one starts.")
+    out = rejoin_paragraphs([a, b])
+    assert len(out) == 2

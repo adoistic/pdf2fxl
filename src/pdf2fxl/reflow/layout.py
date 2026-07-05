@@ -71,3 +71,57 @@ def strip_running(pages: List[List[Segment]], page_height: float,
             keep.append(s)
         out.append(keep)
     return out
+
+
+from .segment import is_heading_type
+
+_SENT_END = tuple(".!?।॥\"')]")   # incl. Devanagari danda/double danda
+
+
+def order_segments(segments: List[Segment]) -> List[Segment]:
+    """Sort by (page, column, y, x) and assign global .order."""
+    ordered = sorted(segments, key=lambda s: (s.page_index, s.column,
+                                              round(s.bbox[1]), s.bbox[0]))
+    for i, s in enumerate(ordered):
+        s.order = i
+    return ordered
+
+
+def merge_dropcaps(segments: List[Segment], body_px: float,
+                   ratio: float = 1.8) -> List[Segment]:
+    """Fold an oversized 1-2 glyph block into the following body paragraph as its
+    first letter. Assumes `segments` are already in reading order."""
+    out: List[Segment] = []
+    i = 0
+    while i < len(segments):
+        s = segments[i]
+        is_cap = (len(s.text.strip()) <= 2 and body_px > 0
+                  and s.size_px >= ratio * body_px and not is_heading_type(s.type))
+        if is_cap and i + 1 < len(segments) and not is_heading_type(segments[i + 1].type):
+            nxt = segments[i + 1]
+            nxt.text = (s.text.strip() + nxt.text).strip()
+            out.append(nxt)
+            i += 2
+        else:
+            out.append(s)
+            i += 1
+    return out
+
+
+def rejoin_paragraphs(segments: List[Segment]) -> List[Segment]:
+    """Merge consecutive body paragraphs split across a page/column break: join
+    when the previous text does not end sentence-final. De-hyphenates trailing '-'.
+    Assumes reading order."""
+    out: List[Segment] = []
+    for s in segments:
+        if (out and not is_heading_type(s.type) and not is_heading_type(out[-1].type)
+                and out[-1].type == "text" and s.type == "text"):
+            prev = out[-1].text.rstrip()
+            if prev.endswith("-"):
+                out[-1].text = prev[:-1] + s.text.lstrip()
+                continue
+            if prev and not prev.endswith(_SENT_END):
+                out[-1].text = prev + " " + s.text.lstrip()
+                continue
+        out.append(s)
+    return out
