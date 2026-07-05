@@ -221,6 +221,15 @@ a:hover{color:var(--deep)}
 
 .field__note{margin-top:9px; font-size:12px; color:var(--body); line-height:1.5}
 
+/* auto-detected script note (replaces the old font picker) */
+.autofont{display:flex; align-items:flex-start; gap:13px; padding:14px 15px;
+  background:var(--cream); border:1px solid var(--line2); border-radius:11px}
+.autofont__ic{width:34px; height:34px; border-radius:9px; flex:none; display:grid; place-items:center;
+  background:var(--card); border:1px solid var(--line2); color:var(--brown)}
+.autofont__ic svg{width:18px; height:18px}
+.autofont b{display:block; font-size:13.5px; font-weight:700; color:var(--deep); margin-bottom:2px}
+.autofont span{font-size:12px; color:var(--body); line-height:1.5}
+
 /* convert button */
 .btn-convert{
   margin-top:28px; width:100%; display:inline-flex; align-items:center; justify-content:center; gap:11px;

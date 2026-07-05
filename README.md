@@ -28,7 +28,13 @@ Options:
     --figures image|drop       # crop figures, or omit them
     --formulas mathml|image|text
     --layout single|two-up|auto   # two-up = two book pages per scanned image
-    --font <ttf>               # embed a script-specific face (e.g. Devanagari)
+    --font <ttf>               # override the Latin base face (optional; rarely needed)
+
+Fonts are assigned automatically. The bundled Noto Serif covers Latin, Greek, and
+Cyrillic; every other script the book uses (Devanagari, Arabic, Tamil, CJK, and the
+rest) is detected from the text, its Noto face fetched from Google Fonts, cached, and
+embedded, with a `font-family` stack so `unicode-range` routes each script to its font.
+A Latin-only book needs no network. See `reflow/scripts.py` and `reflow/fonts.py`.
 
 Heading levels come from measured type size, clustered across the whole book and
 reconciled with section numbering (1 / 1.1 / 1.2.1). Mistral's per-page hierarchy is

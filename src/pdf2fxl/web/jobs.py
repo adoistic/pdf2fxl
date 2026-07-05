@@ -17,11 +17,9 @@ from ..ocr import run_ocr
 from ..reflow.docmodel import Doc, Heading, Figure, Table
 
 # script -> (font file, language code)
-FONTS: Dict[str, tuple] = {
-    "Latin": ("NotoSerif-Regular.ttf", "en"),
-    "Devanagari": ("NotoSerifDevanagari-Regular.ttf", "hi"),
-    "Oriya": ("NotoSerifOriya-Regular.ttf", "or"),
-}
+# Latin/Greek/Cyrillic base; every other script is auto-detected and its Noto face
+# fetched + embedded by the reflow pipeline (reflow/scripts.py + reflow/fonts.py).
+_BASE_FONT = "NotoSerif-Regular.ttf"
 _EXT = {"epub": "epub", "md": "md", "docx": "docx"}
 _MAX_TOC = 600
 
@@ -74,23 +72,20 @@ class JobStore:
         return None
 
     def start(self, job_id: str, out_dir: Path, pdf_path: Path, title: str,
-              api_key: str, font: str, layout: str, tables: str,
-              formats: List[str]) -> Job:
+              api_key: str, layout: str, tables: str, formats: List[str]) -> Job:
         job = Job(id=job_id, out_dir=Path(out_dir), pdf_path=Path(pdf_path), title=title)
         with self._lock:
             self._jobs[job_id] = job
         t = threading.Thread(target=self._run, daemon=True, kwargs=dict(
-            job=job, api_key=api_key, font=font, layout=layout, tables=tables,
-            formats=formats))
+            job=job, api_key=api_key, layout=layout, tables=tables, formats=formats))
         t.start()
         return job
 
-    def _run(self, job: Job, api_key: str, font: str, layout: str, tables: str,
+    def _run(self, job: Job, api_key: str, layout: str, tables: str,
              formats: List[str]) -> None:
         from ..reflow.pipeline_reflow import convert_book_reflow  # lazy: engine module
         try:
-            font_file, language = FONTS.get(font, FONTS["Latin"])
-            font_path = str(self.fonts_dir / font_file)
+            font_path = str(self.fonts_dir / _BASE_FONT)
             try:
                 job.ocr_total = page_count(str(job.pdf_path))
             except Exception:
@@ -107,7 +102,7 @@ class JobStore:
                          reflow_formats=tuple(formats) or ("epub", "md", "docx"))
             convert_book_reflow(
                 str(job.pdf_path), job.out_dir, cfg=cfg, ocr_fn=counting_ocr,
-                api_key=api_key, title=job.title, language=language, font_path=font_path)
+                api_key=api_key, title=job.title, language="en", font_path=font_path)
 
             job.stage = "render"
             job.result = self._build_result(job, formats)

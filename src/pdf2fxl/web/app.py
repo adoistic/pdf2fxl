@@ -63,7 +63,6 @@ def index() -> HTMLResponse:
 async def convert(
     file: UploadFile = File(...),
     title: str = Form(""),
-    font: str = Form("Latin"),
     layout: str = Form("auto"),
     tables: str = Form("html"),
     formats: List[str] = Form(default=[]),
@@ -89,7 +88,7 @@ async def convert(
 
     clean_title = _safe_title(title, Path(file.filename).stem)
     store.start(job_id, out_dir, pdf_path, clean_title, api_key=_api_key(),
-                font=font, layout=layout, tables=tables, formats=formats)
+                layout=layout, tables=tables, formats=formats)
     return JSONResponse({"id": job_id})
 
 

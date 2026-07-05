@@ -124,7 +124,6 @@
     const fd = new FormData();
     fd.append("file", currentFile);
     fd.append("title", $("#title-input").value.trim());
-    fd.append("font", $("#font-select").value);
     fd.append("layout", segVal("layout-seg"));
     fd.append("tables", segVal("tables-seg"));
     chipVals().forEach((f) => fd.append("formats", f));

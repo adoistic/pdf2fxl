@@ -17,14 +17,24 @@ CONTAINER_XML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def _css(font_file: str, family: str) -> str:
-    return f"""@font-face {{ font-family: "{family}"; src: url("fonts/{font_file}"); }}
-html, body {{ font-family: "{family}", serif; line-height: 1.5; margin: 1em; }}
-h1, h2, h3, h4, h5, h6 {{ line-height: 1.2; }}
-figure {{ margin: 1em 0; text-align: center; }}
-img {{ max-width: 100%; height: auto; }}
-figcaption {{ font-size: 0.9em; color: #444; }}
-"""
+def _css(base_file: str, base_family: str, faces, stack) -> str:
+    """CSS binding the bundled base face plus one @font-face per script webface,
+    with a font-family stack so each script's codepoints route to its font."""
+    lines = [f'@font-face {{ font-family: "{base_family}"; src: url("fonts/{base_file}"); }}']
+    for family, fname, weight, urange in faces:
+        ur = f" unicode-range: {urange};" if urange else ""
+        lines.append(
+            f'@font-face {{ font-family: "{family}"; font-weight: {weight}; '
+            f'src: url("fonts/{fname}") format("woff2");{ur} }}')
+    stack_css = ", ".join(f'"{s}"' for s in stack) + ", serif"
+    lines += [
+        f"html, body {{ font-family: {stack_css}; line-height: 1.5; margin: 1em; }}",
+        "h1, h2, h3, h4, h5, h6 { line-height: 1.2; }",
+        "figure { margin: 1em 0; text-align: center; }",
+        "img { max-width: 100%; height: auto; }",
+        "figcaption { font-size: 0.9em; color: #444; }",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def _runs_html(runs) -> str:
@@ -106,13 +116,12 @@ def _nav(chapters, titles, book_title: str) -> str:
 """
 
 
-def _opf(chapters, images: List[str], title, language, font_name, modified) -> str:
+def _opf(chapters, images: List[str], title, language, font_items, modified) -> str:
     book_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, "pdf2fxl-reflow:" + title)
-    manifest = [
-        '<item id="css" href="styles/reflow.css" media-type="text/css"/>',
-        f'<item id="font" href="fonts/{font_name}" media-type="application/font-sfnt"/>',
-        '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
-    ]
+    manifest = ['<item id="css" href="styles/reflow.css" media-type="text/css"/>']
+    for fid, href, mt in font_items:
+        manifest.append(f'<item id="{fid}" href="{href}" media-type="{mt}"/>')
+    manifest.append('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')
     spine = []
     for i, _ in enumerate(chapters):
         manifest.append(f'<item id="chap{i}" href="chap-{i:03d}.xhtml" '
@@ -135,11 +144,15 @@ def _opf(chapters, images: List[str], title, language, font_name, modified) -> s
 
 
 def write_epub_reflow(doc: Doc, out_path: Path, font_path: str,
-                      assets_root: Path) -> Path:
+                      assets_root: Path, webfonts=None) -> Path:
+    """Write a reflowable EPUB. `font_path` is the bundled base face (Latin/Greek/
+    Cyrillic); `webfonts` is an optional list of FontFace for other scripts, each
+    embedded and added to the font-family stack."""
     out_path = Path(out_path)
     assets_root = Path(assets_root)
-    font_name = Path(font_path).name
-    family = font_family(font_path)
+    webfonts = webfonts or []
+    base_name = Path(font_path).name
+    base_family = font_family(font_path)
     modified = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     chapters = _split_chapters(doc.nodes)
     titles = [_chapter_title(ch, f"Chapter {i+1}") for i, ch in enumerate(chapters)]
@@ -148,13 +161,33 @@ def write_epub_reflow(doc: Doc, out_path: Path, font_path: str,
         src = getattr(n, "src", None) or getattr(n, "image_src", None)
         if src:
             images.append(Path(src).name)
+
+    # base face + one embedded woff2 per script webface
+    faces: List[Tuple[str, str, int, str]] = []
+    font_items = [("font-base", f"fonts/{base_name}", "application/font-sfnt")]
+    embed: List[Tuple[str, str]] = [(font_path, f"OEBPS/fonts/{base_name}")]
+    used = {base_name}
+    stack = [base_family]
+    for i, wf in enumerate(webfonts):
+        name = wf.path.name
+        if name in used:
+            name = f"{i}-{name}"
+        used.add(name)
+        faces.append((wf.family, name, wf.weight, wf.unicode_range))
+        font_items.append((f"wf{i}", f"fonts/{name}", "font/woff2"))
+        embed.append((str(wf.path), f"OEBPS/fonts/{name}"))
+        if wf.family not in stack:
+            stack.append(wf.family)
+
     with zipfile.ZipFile(out_path, "w") as z:
         z.writestr("mimetype", "application/epub+zip", zipfile.ZIP_STORED)
         z.writestr("META-INF/container.xml", CONTAINER_XML, zipfile.ZIP_DEFLATED)
-        z.writestr("OEBPS/styles/reflow.css", _css(font_name, family), zipfile.ZIP_DEFLATED)
-        z.write(font_path, f"OEBPS/fonts/{font_name}", zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/styles/reflow.css",
+                   _css(base_name, base_family, faces, stack), zipfile.ZIP_DEFLATED)
+        for src, dest in embed:
+            z.write(src, dest, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/content.opf",
-                   _opf(chapters, images, doc.title, doc.language, font_name, modified),
+                   _opf(chapters, images, doc.title, doc.language, font_items, modified),
                    zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/nav.xhtml", _nav(chapters, titles, doc.title), zipfile.ZIP_DEFLATED)
         for i, ch in enumerate(chapters):

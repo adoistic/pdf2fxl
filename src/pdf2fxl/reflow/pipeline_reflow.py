@@ -5,13 +5,26 @@ import cv2
 
 from ..config import Config
 from ..ingest import rasterize_page, trim_page, page_count, trimbox_px
+from . import scripts as _scripts
+from .fonts import resolve_fonts
 from .ocr_reflow import parse_ocr_reflow
 from .assemble import build_doc, PageInput, ReflowOptions
+from .docmodel import Heading, Paragraph
 from .render_md import render_markdown
 from .render_docx import render_docx
 from .render_epub_reflow import write_epub_reflow
 
 OcrFn = Callable[..., dict]
+
+
+def _all_text(doc) -> str:
+    parts: List[str] = []
+    for n in doc.nodes:
+        if isinstance(n, Heading):
+            parts.append(n.text)
+        elif isinstance(n, Paragraph):
+            parts.extend(r.text for r in n.runs)
+    return "\n".join(parts)
 
 
 def _trim(img, cfg: Config, pdf_path: str, index: int):
@@ -46,6 +59,16 @@ def convert_book_reflow(pdf_path: str, out_dir: Path, cfg: Optional[Config] = No
                             figures=cfg.reflow_figures)
     doc = build_doc(page_inputs, title=title, language=language,
                     assets_dir=images_dir, options=options)
+
+    # Auto script detection: assign fonts and language from the book's own text,
+    # so the user never picks a font. Latin/Greek/Cyrillic use the bundled base;
+    # any other script gets its Noto face fetched and embedded (network, cached).
+    text = _all_text(doc)
+    counts = _scripts.script_counts(text)
+    detected = {s for s, n in counts.items() if n >= 3}
+    doc.language = _scripts.language_for(detected, counts, default=language)
+    webfonts = resolve_fonts(detected) if detected else []
+
     (out_dir / f"{title}.doc.json").write_text(doc.to_json(), encoding="utf-8")
 
     outputs: List[Path] = []
@@ -56,5 +79,6 @@ def convert_book_reflow(pdf_path: str, out_dir: Path, cfg: Optional[Config] = No
         outputs.append(render_docx(doc, out_dir / f"{title}.docx", assets_root=images_dir))
     if "epub" in cfg.reflow_formats:
         outputs.append(write_epub_reflow(doc, out_dir / f"{title}.epub",
-                                         font_path=font_path, assets_root=images_dir))
+                                         font_path=font_path, assets_root=images_dir,
+                                         webfonts=webfonts))
     return outputs
