@@ -4,8 +4,8 @@
     {
       "name": "reflow-web",
       "runtimeExecutable": ".venv/bin/python",
-      "runtimeArgs": ["-m", "uvicorn", "pdf2fxl.web.app:app", "--host", "127.0.0.1", "--port", "8000"],
-      "port": 8000
+      "runtimeArgs": ["-m", "uvicorn", "pdf2fxl.web.app:app", "--host", "127.0.0.1", "--port", "8028"],
+      "port": 8028
     }
   ]
 }
