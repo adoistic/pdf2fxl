@@ -7,16 +7,26 @@
   <link rel="stylesheet" href="/shell.css">
 </head>
 <body>
-  <main>
+  <section id="login-view">
     <h1>Thothica OCR</h1>
-    <p>Clean digital editions from any scan. Sign in is opening soon.</p>
-    <p class="status" id="status">checking service</p>
-  </main>
-  <script>
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then((b) => { document.getElementById('status').textContent = b.ok ? 'service online' : 'service degraded'; })
-      .catch(() => { document.getElementById('status').textContent = 'service offline'; });
-  </script>
+    <p>Clean digital editions from any scan.</p>
+    <button id="google-signin-button" type="button">Sign in with Google</button>
+    <div>
+      <label for="magic-link-email">Email</label>
+      <input id="magic-link-email" type="email" placeholder="you@example.com" autocomplete="email">
+      <button id="magic-link-button" type="button">Send me a sign in link</button>
+    </div>
+    <p id="magic-link-status" hidden></p>
+  </section>
+
+  <section id="app-view" hidden>
+    <header>
+      <span id="user-email"></span>
+      <button id="sign-out-button" type="button">Sign out</button>
+    </header>
+    <main id="app-main"></main>
+  </section>
+
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
