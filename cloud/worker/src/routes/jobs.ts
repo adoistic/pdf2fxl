@@ -3,6 +3,7 @@ import type { AppUser, Env } from "../types";
 import { createJob, getJobForUser, listJobsForUser, type Job, type JobMode } from "../jobs";
 import { startJob } from "../start";
 import { buildDownload, type RenderFn } from "../download";
+import { r2DirectEnabled, presignPut } from "../presign";
 
 // Deliverable ceiling: the body is buffered in the isolate (128MB memory) and
 // the edge caps request bodies near this size anyway. Larger scans need the
@@ -32,16 +33,31 @@ jobs.post("/", async (c) => {
   if (declared > MAX_UPLOAD_BYTES) {
     return c.json({ error: "file is too large" }, 413);
   }
+  const id = crypto.randomUUID();
+  const key = `uploads/${user.id}/${id}.pdf`;
+
+  // Direct-to-R2: create the job and hand back a short-lived presigned PUT URL.
+  // The browser PUTs the PDF straight to R2, so the Worker never sees the bytes;
+  // /start then reads the PDF from R2. Requires the R2 secrets to be set.
+  if (c.req.query("direct") === "1") {
+    if (!r2DirectEnabled(c.env)) {
+      return c.json({ error: "direct upload is not available" }, 409);
+    }
+    const job = await createJob(c.env.DB, {
+      id, userId: user.id, bulkId, mode: mode as JobMode, express: false, title, r2UploadKey: key,
+    });
+    const uploadUrl = await presignPut(c.env, key, 900);
+    return c.json({ ...publicJob(job), uploadUrl });
+  }
+
   const body = c.req.raw.body;
   if (!body) {
     return c.json({ error: "attach a PDF as the request body" }, 400);
   }
-  // Stream the request body straight to R2 (it carries a known content-length),
-  // so the Worker never buffers the whole file in its 128MB isolate. PDF
-  // validity is verified by the container's /prepare at start, which returns a
-  // clean "we could not read this file" for anything that is not a real PDF.
-  const id = crypto.randomUUID();
-  const key = `uploads/${user.id}/${id}.pdf`;
+  // Streaming fallback (no R2 token yet): stream the request body straight to R2
+  // (it carries a known content-length), so the Worker never buffers the whole
+  // file in its 128MB isolate. PDF validity is verified by the container's
+  // /prepare at start, which returns a clean "we could not read this file".
   await c.env.STORE.put(key, body, { httpMetadata: { contentType: "application/pdf" } });
   const job = await createJob(c.env.DB, {
     id, userId: user.id, bulkId, mode: mode as JobMode, express: false, title, r2UploadKey: key,

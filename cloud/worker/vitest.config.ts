@@ -17,6 +17,10 @@ export default defineWorkersConfig(async () => {
               TEST_MIGRATIONS: migrations,
               FIREBASE_PROJECT_ID: "test-project",
               ADMIN_EMAIL: "adnan@thothica.com",
+              // Dummy R2 creds so the direct-to-R2 (presigned) path is exercised.
+              R2_ACCOUNT_ID: "testacct",
+              R2_ACCESS_KEY_ID: "AKIATEST",
+              R2_SECRET_ACCESS_KEY: "testsecret",
             },
           },
         },

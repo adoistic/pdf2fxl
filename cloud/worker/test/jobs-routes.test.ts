@@ -49,6 +49,25 @@ describe("job upload", () => {
     expect(await stored!.text()).toContain("%PDF");
   });
 
+  it("direct=1 returns a presigned R2 upload URL and creates the job (bytes bypass the Worker)", async () => {
+    const res = await app.request(
+      "/api/jobs?mode=reflow&title=Direct&direct=1",
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+      env
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; status: string; uploadUrl: string };
+    expect(body.status).toBe("received");
+    const u = new URL(body.uploadUrl);
+    expect(u.host).toContain("r2.cloudflarestorage.com");
+    expect(u.pathname).toContain("/thothica-ocr/uploads/");
+    expect(u.searchParams.get("X-Amz-Signature")).toBeTruthy();
+    // The job row exists with the R2 key that the presigned URL targets.
+    const row = await env.DB.prepare("SELECT r2_upload_key FROM jobs WHERE id = ?1")
+      .bind(body.id).first<{ r2_upload_key: string }>();
+    expect(u.pathname).toContain(row!.r2_upload_key);
+  });
+
   it("rejects bad params (PDF validity is checked later, at start)", async () => {
     expect((await upload("mode=sideways", PDF_BYTES)).status).toBe(400);
     expect((await upload("mode=reflow", null)).status).toBe(400);
