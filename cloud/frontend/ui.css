@@ -412,10 +412,16 @@ input{font:inherit}
 /* ---- two-phase bulk panel: count, gate, remaining -------------------------*/
 /* One warm card that walks the group through counting, the affordability
    choice, and the "how many left" indicator. Only one block shows at a time. */
+/* While the group panel (counting / gate / processing) is active, hide the
+   upload form controls so the panel is the sole focus of the left column. */
+.panel--upload.is-busy > :not(#bulk-panel):not(#upload-heading):not(#upload-status){
+  display:none !important;
+}
 .bulk-panel{
   margin-top:16px; padding:18px;
   background:var(--cream); border:1px solid var(--line2); border-radius:var(--r-md);
 }
+.panel--upload.is-busy .bulk-panel{ margin-top:8px; }
 .bulk-panel__block + .bulk-panel__block{margin-top:16px}
 
 .bulk-panel__track{

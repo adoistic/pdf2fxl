@@ -1103,9 +1103,13 @@ async function runPool(items, limit, task, shouldStop) {
 // ---------------------------------------------------------------------------
 function showBulkPanel() {
   bulkPanel.hidden = false;
+  // Focus the left column on the group panel: hide the upload form controls so
+  // there is only one call to action (the gate's), not a stray "Create my edition".
+  bulkPanel.closest(".panel--upload")?.classList.add("is-busy");
 }
 function hideBulkPanel() {
   bulkPanel.hidden = true;
+  bulkPanel.closest(".panel--upload")?.classList.remove("is-busy");
   bulkCounting.hidden = true;
   bulkGate.hidden = true;
   bulkProcessing.hidden = true;
