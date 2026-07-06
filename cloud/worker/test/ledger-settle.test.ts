@@ -65,4 +65,24 @@ describe("ledger: capture and release", () => {
     expect(await captureHold(env.DB, alloc!.id)).toBe(false);
     expect(await captureHold(env.DB, holdId)).toBe(true); // the real hold still settles
   });
+
+  it("release refuses non-hold rows, including negative allocations (no minting)", async () => {
+    const userId = await createUser();
+    await allocate(env.DB, { userId, amountMcr: 50_000, note: null, createdBy: "adnan@thothica.com" });
+    // a negative allocation (admin revoke) is the dangerous target: releasing it would mint credits
+    await allocate(env.DB, { userId, amountMcr: -20_000, note: "revoke", createdBy: "adnan@thothica.com" });
+    const revoke = await env.DB.prepare(
+      "SELECT id FROM credit_ledger WHERE user_id = ?1 AND amount_mcr = -20000"
+    ).bind(userId).first<{ id: number }>();
+    expect(await releaseHold(env.DB, revoke!.id)).toBe(false);
+    expect(await releaseHold(env.DB, 999_999)).toBe(false);
+    expect(await getBalanceMcr(env.DB, userId)).toBe(30_000);
+  });
+
+  it("a released hold cannot be released twice", async () => {
+    const { userId, holdId } = await fundedHold(7_000);
+    expect(await releaseHold(env.DB, holdId)).toBe(true);
+    expect(await releaseHold(env.DB, holdId)).toBe(false);
+    expect(await getBalanceMcr(env.DB, userId)).toBe(100_000);
+  });
 });

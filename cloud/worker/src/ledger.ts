@@ -65,11 +65,19 @@ export async function placeHold(
 // UNIQUE constraint and reports false.
 
 function isUniqueViolation(err: unknown): boolean {
-  return String(err).includes("UNIQUE");
+  // Pinned to the settlement index: a future unique index on this table must
+  // not have its violations silently read as "already settled".
+  return String(err).includes("UNIQUE constraint failed: credit_ledger.ref_id");
 }
 
 // Capture: the job delivered. The hold's negative amount stands as the final
 // charge; the capture row is a zero-amount marker that locks the hold.
+//
+// Returns false as a no-op for three cases the caller must not conflate blindly:
+// the hold was already settled (either way), or the id is not a hold row.
+// A finalizer retrying after a timeout must disambiguate via:
+//   SELECT kind FROM credit_ledger WHERE ref_id = ?1 AND kind IN ('capture','release')
+// before deciding whether the job was delivered or refunded.
 export async function captureHold(db: D1Database, holdId: number): Promise<boolean> {
   try {
     const res = await db
@@ -89,6 +97,12 @@ export async function captureHold(db: D1Database, holdId: number): Promise<boole
 
 // Release: the job failed or was cancelled. Insert the exact opposite of the
 // hold amount, refunding it in full.
+//
+// Returns false as a no-op for three cases the caller must not conflate blindly:
+// the hold was already settled (either way), or the id is not a hold row.
+// A finalizer retrying after a timeout must disambiguate via:
+//   SELECT kind FROM credit_ledger WHERE ref_id = ?1 AND kind IN ('capture','release')
+// before deciding whether the job was delivered or refunded.
 export async function releaseHold(db: D1Database, holdId: number): Promise<boolean> {
   try {
     const res = await db
