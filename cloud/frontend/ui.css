@@ -1,0 +1,226 @@
+/* ============================================================================
+   Thothica OCR, warm editorial front door.
+   Palette + type per the Thothica brand system. Gold is seasoning, never fill.
+   ========================================================================== */
+
+/* :root palette: pasted verbatim from the existing console stylesheet */
+:root{
+  --brown:#624120; --brown2:#5A4530; --deep:#4F3419;
+  --gold:#B8956A;  --sand:#E0C4AC;
+  --cream:#FCF7F1; --page:#FCFCFA; --card:#FFFFFF;
+  --tile:#F4EFE8;  --badge:#EFEEEA;
+  --line:#C9C2BA;  --line2:#E3DDD5; --body:#6F665E;
+
+  --serif:'Cormorant Garamond',Georgia,serif;
+  --sans:'Teachers','Trebuchet MS',Calibri,sans-serif;
+
+  --r-lg:16px; --r-md:13px; --r-sm:9px;
+  --shadow-sm:0 1px 2px rgba(79,52,25,.04), 0 1px 3px rgba(79,52,25,.06);
+  --shadow-md:0 8px 24px -12px rgba(79,52,25,.18), 0 2px 8px -4px rgba(79,52,25,.10);
+  --shadow-lg:0 30px 60px -28px rgba(79,52,25,.32);
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --maxw:1440px;
+}
+
+*{box-sizing:border-box; margin:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--page); color:var(--body);
+  font-family:var(--sans); font-size:16px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  /* barely there warm paper grain, same atmosphere as the console */
+  background-image:
+    radial-gradient(1200px 620px at 82% -8%, rgba(184,149,106,.09), transparent 60%),
+    radial-gradient(980px 560px at -6% 108%, rgba(98,65,32,.06), transparent 55%);
+  background-attachment:fixed;
+  min-height:100vh;
+}
+::selection{background:rgba(184,149,106,.28); color:var(--deep)}
+
+img{max-width:100%}
+button{font:inherit; cursor:pointer}
+input{font:inherit}
+
+/* ---- shared type helpers --------------------------------------------------*/
+.eyebrow{
+  font-family:var(--sans); font-weight:700; font-size:11px;
+  letter-spacing:.22em; text-transform:uppercase; color:var(--brown);
+  display:inline-flex; align-items:center; gap:.7em;
+}
+.rule-gold{display:inline-block; width:54px; height:1px; background:var(--gold); border:0}
+
+/* ============================================================================
+   Login view
+   ========================================================================== */
+.login{
+  min-height:100vh; min-height:100svh;
+  display:grid; place-items:center;
+  padding:clamp(24px,3.5vw,48px) clamp(20px,5vw,64px);
+}
+.login__grid{
+  width:100%; max-width:1180px;
+  display:grid; grid-template-columns:1.08fr .92fr;
+  gap:clamp(36px,6vw,96px);
+  align-items:center;
+}
+
+/* ---- left column: brand, headline, auth -----------------------------------*/
+.login__brand{display:flex; align-items:center; gap:12px; margin-bottom:clamp(24px,4.5vh,40px)}
+.login__logo{height:36px; width:auto; display:block}
+.login__product{
+  font-family:var(--sans); font-weight:700; font-size:12px;
+  letter-spacing:.24em; text-transform:uppercase; color:var(--brown2);
+  border:1px solid var(--line); border-radius:999px;
+  padding:5px 12px 4px; line-height:1;
+  background:var(--card);
+}
+
+.login__headline{
+  font-family:var(--serif); font-weight:500; color:var(--deep);
+  font-size:clamp(38px,4.6vw,60px); line-height:1.04; letter-spacing:-.01em;
+  margin:18px 0 16px; max-width:12.5em;
+}
+.login__headline em{font-style:italic; color:var(--brown)}
+.login__lead{
+  font-size:clamp(16px,1.4vw,18px); line-height:1.62; color:var(--body);
+  max-width:32em; margin:0 0 30px;
+}
+
+/* ---- auth card ------------------------------------------------------------*/
+.auth-card{
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-md);
+  padding:clamp(20px,3vw,28px);
+  max-width:26.5em;
+}
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  min-height:48px; padding:11px 20px;
+  border-radius:var(--r-md); border:1px solid transparent;
+  font-family:var(--sans); font-weight:600; font-size:15px; letter-spacing:.01em;
+  transition:background .2s var(--ease), border-color .2s var(--ease),
+             box-shadow .2s var(--ease), color .2s var(--ease);
+}
+.btn:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+
+.btn--google{
+  width:100%;
+  background:var(--card); color:var(--brown2); border-color:var(--line);
+}
+.btn--google:hover{border-color:var(--gold); box-shadow:var(--shadow-sm); color:var(--deep)}
+.btn__gmark{flex:0 0 auto}
+
+.btn--primary{
+  width:100%;
+  background:var(--brown); color:var(--cream);
+}
+.btn--primary:hover{background:var(--deep)}
+
+.auth-card__divider{
+  display:flex; align-items:center; gap:14px;
+  margin:18px 0;
+  font-size:12px; letter-spacing:.08em; color:var(--body);
+}
+.auth-card__divider::before,
+.auth-card__divider::after{
+  content:""; flex:1; height:1px; background:var(--line2);
+}
+
+.auth-card__email{display:flex; flex-direction:column; gap:10px}
+.field-label{
+  font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--brown2);
+}
+.field{
+  width:100%; min-height:48px; padding:11px 15px;
+  border:1px solid var(--line); border-radius:var(--r-md);
+  background:var(--page); color:var(--deep);
+  transition:border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+.field::placeholder{color:var(--line)}
+.field:focus{
+  outline:none; border-color:var(--gold);
+  box-shadow:0 0 0 3px rgba(184,149,106,.18);
+}
+
+.auth-card__status{
+  margin-top:16px; padding:13px 16px;
+  background:var(--cream); border-left:2px solid var(--gold);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  color:var(--brown2); font-size:14.5px; line-height:1.55;
+}
+.auth-card__note{
+  margin-top:14px; font-size:13px; color:var(--body); line-height:1.5;
+}
+
+/* ---- right column: the quiet signature figure -----------------------------*/
+.figure-card{
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-md);
+  padding:24px 26px 20px;
+}
+.figure-card__label{
+  display:flex; align-items:baseline; justify-content:space-between; gap:14px;
+  margin-bottom:14px;
+}
+.figure-card__title{
+  font-family:var(--serif); font-weight:600; font-size:19px; color:var(--deep);
+}
+.figure-card__tag{
+  font-family:var(--sans); font-weight:700; font-size:10px;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--gold);
+  white-space:nowrap;
+}
+.figure-card__chart{display:block; width:100%; height:auto}
+.figure-card__cap{
+  margin-top:14px; padding-top:14px; border-top:1px solid var(--line2);
+  font-size:13px; line-height:1.55; color:var(--body);
+}
+.login__figure-note{
+  margin-top:14px; text-align:center;
+  font-family:var(--serif); font-style:italic; font-size:15.5px; color:var(--brown2);
+}
+
+/* ---- entrance: one calm staggered reveal ----------------------------------*/
+.reveal{opacity:0; transform:translateY(10px); animation:rise .7s var(--ease) forwards}
+.d1{animation-delay:.05s}
+.d2{animation-delay:.15s}
+.d3{animation-delay:.28s}
+.d4{animation-delay:.4s}
+@keyframes rise{to{opacity:1; transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .reveal{animation:none; opacity:1; transform:none}
+}
+
+/* ---- responsive -----------------------------------------------------------*/
+@media (max-width:719px){
+  .login{place-items:start center; padding-top:clamp(32px,8vw,48px)}
+  .login__grid{grid-template-columns:1fr; gap:40px; max-width:34em}
+  .login__brand{margin-bottom:24px}
+  .rule-gold{display:none}
+  .login__headline{font-size:clamp(34px,9.5vw,44px)}
+  .auth-card{max-width:none}
+  .figure-card{padding:18px 18px 16px}
+}
+
+/* ============================================================================
+   App view (styled fully in the next task; kept presentable here)
+   ========================================================================== */
+.app__bar{
+  display:flex; align-items:center; gap:16px;
+  height:68px; padding:0 clamp(18px,4vw,56px);
+  background:rgba(252,252,250,.82);
+  backdrop-filter:saturate(1.1) blur(14px);
+  -webkit-backdrop-filter:saturate(1.1) blur(14px);
+  border-bottom:1px solid var(--line2);
+}
+.app__logo{height:32px; width:auto; display:block}
+.app__spacer{flex:1}
+.app__email{font-size:13.5px; color:var(--brown2)}
+.btn--ghost{
+  min-height:44px; padding:9px 16px;
+  background:transparent; color:var(--brown); border-color:var(--line);
+}
+.btn--ghost:hover{border-color:var(--gold); color:var(--deep)}
+.app__main{max-width:var(--maxw); margin:0 auto; padding:28px clamp(18px,4vw,56px)}
