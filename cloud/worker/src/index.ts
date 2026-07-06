@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { AppUser, Env } from "./types";
-import { authRequired } from "./auth";
+import { adminRequired, authRequired } from "./auth";
 import { getBalanceMcr, MCR_PER_CREDIT } from "./ledger";
+import { admin } from "./routes/admin";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
@@ -26,5 +27,8 @@ app.get("/api/me", async (c) => {
     balance: balanceMcr / MCR_PER_CREDIT,
   });
 });
+
+app.use("/api/admin/*", authRequired, adminRequired);
+app.route("/api/admin", admin);
 
 export default app;
