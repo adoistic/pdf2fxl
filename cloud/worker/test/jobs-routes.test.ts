@@ -49,10 +49,12 @@ describe("job upload", () => {
     expect(await stored!.text()).toContain("%PDF");
   });
 
-  it("rejects non-pdf bodies and bad params", async () => {
-    expect((await upload("mode=reflow", new TextEncoder().encode("not a pdf"))).status).toBe(400);
+  it("rejects bad params (PDF validity is checked later, at start)", async () => {
     expect((await upload("mode=sideways", PDF_BYTES)).status).toBe(400);
     expect((await upload("mode=reflow", null)).status).toBe(400);
+    // A non-PDF body is accepted at upload; the container's /prepare rejects it
+    // at start with a clean message, so the Worker never inspects the bytes here.
+    expect((await upload("mode=reflow", new TextEncoder().encode("not a pdf"))).status).toBe(200);
   });
 
   it("rejects oversized uploads by content-length", async () => {

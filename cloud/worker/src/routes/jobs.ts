@@ -33,17 +33,13 @@ jobs.post("/", async (c) => {
   if (!body) {
     return c.json({ error: "attach a PDF as the request body" }, 400);
   }
-  const bytes = new Uint8Array(await c.req.raw.arrayBuffer());
-  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-    return c.json({ error: "file is too large" }, 413);
-  }
-  const head = new TextDecoder().decode(bytes.slice(0, 5));
-  if (head !== "%PDF-") {
-    return c.json({ error: "that does not look like a PDF" }, 400);
-  }
+  // Stream the request body straight to R2 (it carries a known content-length),
+  // so the Worker never buffers the whole file in its 128MB isolate. PDF
+  // validity is verified by the container's /prepare at start, which returns a
+  // clean "we could not read this file" for anything that is not a real PDF.
   const id = crypto.randomUUID();
   const key = `uploads/${user.id}/${id}.pdf`;
-  await c.env.STORE.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
+  await c.env.STORE.put(key, body, { httpMetadata: { contentType: "application/pdf" } });
   const job = await createJob(c.env.DB, {
     id, userId: user.id, mode: mode as JobMode, express: false, title, r2UploadKey: key,
   });

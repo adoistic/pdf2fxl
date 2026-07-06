@@ -6,7 +6,7 @@ import { failJob, transition, type Job } from "./jobs";
 // queue handler passes the real container fetch, tests pass a stub returning
 // fixture artifacts.
 export type ProcessFn = (
-  pdf: ArrayBuffer,
+  pdf: ReadableStream<Uint8Array> | ArrayBuffer,
   job: Job
 ) => Promise<{
   page_count: number;
@@ -69,8 +69,10 @@ export async function finalizeJob(
   }
 
   try {
-    const uploadBytes = await upload.arrayBuffer();
-    const out = await process(uploadBytes, job);
+    // Stream the R2 object straight through to the container, so the Worker
+    // never holds the whole PDF in its isolate (the container needs the bytes,
+    // the Worker does not).
+    const out = await process(upload.body, job);
 
     const verbatimKey = `ocr/${jobId}/verbatim.json`;
     const docKey = `doc/${jobId}/normalized.json`;

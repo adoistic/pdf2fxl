@@ -23,7 +23,10 @@ async function readyJob(title = "My Book") {
   await env.STORE.put(key, "%PDF-fake");
   const job = await createJob(env.DB, { userId, mode: "reflow", express: false, title, r2UploadKey: key });
   await startJob(env.DB, env.STORE, async () => ({ pageCount: 10 }), job.id, userId);
-  await finalizeJob(env, job.id, async () => artifacts);
+  await finalizeJob(env, job.id, async (pdf) => {
+    if (pdf instanceof ReadableStream) await new Response(pdf).arrayBuffer();
+    return artifacts;
+  });
   return { userId, jobId: job.id };
 }
 

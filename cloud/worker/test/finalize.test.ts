@@ -30,7 +30,12 @@ const artifacts: Awaited<ReturnType<ProcessFn>> = {
   figures: [{ name: "fig-1.png", base64: btoa("PNGDATA") }],
 };
 
-const stubProcess: ProcessFn = async () => artifacts;
+// Drain the streamed PDF like the real container fetch does, so the R2 object
+// body is consumed and the pool's isolated storage teardown stays happy.
+const stubProcess: ProcessFn = async (pdf) => {
+  if (pdf instanceof ReadableStream) await new Response(pdf).arrayBuffer();
+  return artifacts;
+};
 
 describe("finalizeJob", () => {
   it("happy path: stores artifacts, captures the hold, marks ready, keeps the upload", async () => {
@@ -68,7 +73,10 @@ describe("finalizeJob", () => {
 
   it("process throws: fails the job, releases the hold, keeps the upload", async () => {
     const { userId, jobId, uploadKey } = await processingJob();
-    const boom: ProcessFn = async () => { throw new Error("container 500"); };
+    const boom: ProcessFn = async (pdf) => {
+      if (pdf instanceof ReadableStream) await pdf.cancel();
+      throw new Error("container 500");
+    };
 
     const outcome = await finalizeJob(env, jobId, boom);
     expect(outcome).toBe("failed");
