@@ -1,9 +1,27 @@
 import { Hono } from "hono";
 import type { AppUser, Env } from "../types";
 import { createJob, getJobForUser, listJobsForUser, type Job, type JobMode } from "../jobs";
-import { startJob } from "../start";
+import { startJob, countJob, type EnginePrepare } from "../start";
 import { buildDownload, type RenderFn } from "../download";
 import { r2DirectEnabled, presignPut } from "../presign";
+
+// Send a PDF to the container's /prepare and return its page count. Shared by
+// the count and start routes; injected as a stub in tests.
+function containerPrepare(env: Env): EnginePrepare {
+  return async (pdf: ArrayBuffer) => {
+    const engine = env.OCR_ENGINE.getByName("engine");
+    const res = await engine.fetch(
+      new Request("http://engine/prepare", {
+        method: "POST",
+        headers: { "content-type": "application/pdf" },
+        body: pdf,
+      })
+    );
+    if (!res.ok) throw new Error(`engine /prepare ${res.status}`);
+    const body = (await res.json()) as { page_count: number };
+    return { pageCount: body.page_count };
+  };
+}
 
 // Deliverable ceiling: the body is buffered in the isolate (128MB memory) and
 // the edge caps request bodies near this size anyway. Larger scans need the
@@ -76,23 +94,32 @@ jobs.get("/:id", async (c) => {
   return c.json(publicJob(job));
 });
 
+// Count a job's pages and store the cost up front, without charging. The bulk
+// flow counts every book first so the whole batch is priced and gated against the
+// balance before any credits are committed.
+jobs.post("/:id/count", async (c) => {
+  const user = c.get("user");
+  const result = await countJob(
+    c.env.DB, c.env.STORE, containerPrepare(c.env), c.req.param("id"), user.id
+  );
+  if (!result.ok) {
+    const status =
+      result.reason === "not_found" ? 404
+      : result.reason === "not_countable" ? 409
+      : 500;
+    const message =
+      result.reason === "not_found" ? "not found"
+      : result.reason === "not_countable" ? "this document already started"
+      : "we could not read this file";
+    return c.json({ error: message }, status);
+  }
+  return c.json({ pageCount: result.pageCount, creditsNeeded: result.creditsMcr / 1000 });
+});
+
 jobs.post("/:id/start", async (c) => {
   const user = c.get("user");
-  const prepare = async (pdf: ArrayBuffer) => {
-    const engine = c.env.OCR_ENGINE.getByName("engine");
-    const res = await engine.fetch(
-      new Request("http://engine/prepare", {
-        method: "POST",
-        headers: { "content-type": "application/pdf" },
-        body: pdf,
-      })
-    );
-    if (!res.ok) throw new Error(`engine /prepare ${res.status}`);
-    const body = (await res.json()) as { page_count: number };
-    return { pageCount: body.page_count };
-  };
   const jobId = c.req.param("id");
-  const result = await startJob(c.env.DB, c.env.STORE, prepare, jobId, user.id);
+  const result = await startJob(c.env.DB, c.env.STORE, containerPrepare(c.env), jobId, user.id);
   if (!result.ok) {
     const status =
       result.reason === "not_found" ? 404

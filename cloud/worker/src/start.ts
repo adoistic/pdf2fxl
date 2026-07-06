@@ -11,6 +11,10 @@ export type StartResult =
   | { ok: true; pageCount: number; heldMcr: number }
   | { ok: false; reason: "not_startable" | "insufficient_credits" | "engine_error" | "not_found" };
 
+export type CountResult =
+  | { ok: true; pageCount: number; rateMcr: number; creditsMcr: number }
+  | { ok: false; reason: "not_countable" | "engine_error" | "not_found" };
+
 // Single-tier pricing: one rate per mode, no express surcharge (removed 2026-07-06;
 // all OCR runs the same way and users never see a tier choice).
 async function rateFor(db: D1Database, mode: string): Promise<number> {
@@ -36,17 +40,23 @@ export async function startJob(
   }
 
   let pageCount: number;
-  try {
-    const obj = await store.get(job.r2UploadKey!);
-    if (!obj) throw new Error(`upload missing in R2: ${job.r2UploadKey}`);
-    const res = await prepare(await obj.arrayBuffer());
-    pageCount = res.pageCount;
-    if (!Number.isSafeInteger(pageCount) || pageCount <= 0) {
-      throw new Error(`engine returned page_count ${pageCount}`);
+  // Bulk counts pages first (POST /count) and stores it, so a second /prepare is
+  // wasteful. Reuse a stored, validated page_count when present; otherwise count now.
+  if (job.pageCount != null && Number.isSafeInteger(job.pageCount) && job.pageCount > 0) {
+    pageCount = job.pageCount;
+  } else {
+    try {
+      const obj = await store.get(job.r2UploadKey!);
+      if (!obj) throw new Error(`upload missing in R2: ${job.r2UploadKey}`);
+      const res = await prepare(await obj.arrayBuffer());
+      pageCount = res.pageCount;
+      if (!Number.isSafeInteger(pageCount) || pageCount <= 0) {
+        throw new Error(`engine returned page_count ${pageCount}`);
+      }
+    } catch (err) {
+      await failJob(db, jobId, "preparing", "we could not read this file", String(err));
+      return { ok: false, reason: "engine_error" };
     }
-  } catch (err) {
-    await failJob(db, jobId, "preparing", "we could not read this file", String(err));
-    return { ok: false, reason: "engine_error" };
   }
 
   if (pageCount > MAX_PAGES) {
@@ -87,4 +97,66 @@ export async function startJob(
     return { ok: false, reason: "not_startable" };
   }
   return { ok: true, pageCount, heldMcr: amountMcr };
+}
+
+// Record the page count and rate on a still-received job without charging. Guarded
+// on status='received' and page_count IS NULL so it is idempotent and never
+// overwrites a job already in flight.
+async function recordCount(
+  db: D1Database, jobId: string, userId: number, pageCount: number, rateMcr: number
+): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `UPDATE jobs SET page_count = ?1, rate_mcr = ?2, updated_at = datetime('now')
+       WHERE id = ?3 AND user_id = ?4 AND status = 'received' AND page_count IS NULL`
+    )
+    .bind(pageCount, rateMcr, jobId, userId)
+    .run();
+  return res.meta.changes === 1;
+}
+
+// Count a job's pages up front and store the cost, placing NO hold. The bulk flow
+// counts every book first so the whole batch can be priced and gated against the
+// balance before any credits are committed. Idempotent: a job already counted
+// returns its stored figures.
+export async function countJob(
+  db: D1Database,
+  store: R2Bucket,
+  prepare: EnginePrepare,
+  jobId: string,
+  userId: number
+): Promise<CountResult> {
+  const job = await getJobForUser(db, jobId, userId);
+  if (!job) return { ok: false, reason: "not_found" };
+  if (job.pageCount != null && job.rateMcr != null) {
+    return {
+      ok: true, pageCount: job.pageCount, rateMcr: job.rateMcr,
+      creditsMcr: job.rateMcr * job.pageCount,
+    };
+  }
+  if (job.status !== "received") return { ok: false, reason: "not_countable" };
+
+  let pageCount: number;
+  try {
+    const obj = await store.get(job.r2UploadKey!);
+    if (!obj) throw new Error(`upload missing in R2: ${job.r2UploadKey}`);
+    const res = await prepare(await obj.arrayBuffer());
+    pageCount = res.pageCount;
+    if (!Number.isSafeInteger(pageCount) || pageCount <= 0 || pageCount > MAX_PAGES) {
+      throw new Error(`engine returned page_count ${pageCount}`);
+    }
+  } catch (err) {
+    await failJob(db, jobId, "received", "we could not read this file", String(err));
+    return { ok: false, reason: "engine_error" };
+  }
+
+  const rateMcr = await rateFor(db, job.mode);
+  if (!Number.isSafeInteger(rateMcr) || rateMcr <= 0) {
+    await failJob(db, jobId, "received",
+      "something went wrong on our side, please try again later",
+      `bad rate ${rateMcr}`);
+    return { ok: false, reason: "engine_error" };
+  }
+  await recordCount(db, jobId, userId, pageCount, rateMcr);
+  return { ok: true, pageCount, rateMcr, creditsMcr: rateMcr * pageCount };
 }
