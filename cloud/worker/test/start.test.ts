@@ -77,4 +77,38 @@ describe("startJob", () => {
     expect(after!.errorPublic).not.toMatch(/engine|mistral|pdf2fxl/i);
     expect(await getBalanceMcr(env.DB, userId)).toBe(20_000);
   });
+
+  it("two concurrent starts: exactly one wins, exactly one hold", async () => {
+    const { userId, job } = await seededJob({ fundMcr: 50_000, express: true });
+    const results = await Promise.all([
+      startJob(env.DB, env.STORE, tenPages, job.id, userId),
+      startJob(env.DB, env.STORE, tenPages, job.id, userId),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    const { results: holds } = await env.DB.prepare(
+      "SELECT id FROM credit_ledger WHERE job_id = ?1 AND kind = 'hold'"
+    ).bind(job.id).all();
+    expect(holds).toHaveLength(1);
+  });
+
+  it("missing pricing config fails the job cleanly, no 500, no stuck state", async () => {
+    const { userId, job } = await seededJob({ fundMcr: 50_000, express: false });
+    await env.DB.prepare("DELETE FROM config WHERE key = 'rate_reflow_mcr'").run();
+    const res = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
+    expect(res).toEqual({ ok: false, reason: "engine_error" });
+    const after = await getJobForUser(env.DB, job.id, userId);
+    expect(after!.status).toBe("failed");
+    expect(await getBalanceMcr(env.DB, userId)).toBe(50_000);
+    await env.DB.prepare("INSERT INTO config (key, value) VALUES ('rate_reflow_mcr', '700')").run();
+  });
+
+  it("absurd page counts fail cleanly instead of overflowing the hold", async () => {
+    const { userId, job } = await seededJob({ fundMcr: 50_000, express: false });
+    const absurd = async () => ({ pageCount: 1e13 });
+    const res = await startJob(env.DB, env.STORE, absurd, job.id, userId);
+    expect(res).toEqual({ ok: false, reason: "engine_error" });
+    const after = await getJobForUser(env.DB, job.id, userId);
+    expect(after!.status).toBe("failed");
+    expect(await getBalanceMcr(env.DB, userId)).toBe(50_000);
+  });
 });

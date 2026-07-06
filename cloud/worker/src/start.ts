@@ -1,5 +1,7 @@
-import { placeHold } from "./ledger";
+import { placeHold, releaseHold } from "./ledger";
 import { failJob, getJobForUser, transition } from "./jobs";
+
+const MAX_PAGES = 100_000; // a 100MB upload cannot plausibly exceed this
 
 // The engine callback is injected so tests never need a running container:
 // the route passes the real container fetch, tests pass stubs.
@@ -46,8 +48,25 @@ export async function startJob(
     return { ok: false, reason: "engine_error" };
   }
 
+  if (pageCount > MAX_PAGES) {
+    await failJob(db, jobId, "preparing", "we could not read this file", `page_count ${pageCount} exceeds cap`);
+    return { ok: false, reason: "engine_error" };
+  }
+
   const rateMcr = await rateFor(db, job.mode, job.express);
   const amountMcr = rateMcr * pageCount;
+  if (!Number.isSafeInteger(rateMcr) || rateMcr <= 0 || !Number.isSafeInteger(amountMcr) || amountMcr <= 0) {
+    await failJob(
+      db, jobId, "preparing",
+      "something went wrong on our side, please try again later",
+      `bad pricing: rate ${rateMcr}, pages ${pageCount}`
+    );
+    return { ok: false, reason: "engine_error" };
+  }
+
+  // The cron sweep (plan 3) must find orphan holds via credit_ledger.job_id,
+  // not jobs.hold_id, because a crash can occur between placeHold and the
+  // transition below that records hold_id.
   const hold = await placeHold(db, { userId, jobId, amountMcr });
   if (!hold.ok) {
     await failJob(
@@ -57,8 +76,14 @@ export async function startJob(
     return { ok: false, reason: "insufficient_credits" };
   }
 
-  await transition(db, jobId, "preparing", "processing", {
+  const promoted = await transition(db, jobId, "preparing", "processing", {
     page_count: pageCount, rate_mcr: rateMcr, hold_id: hold.holdId,
   });
+  if (!promoted) {
+    // Someone else moved the job (e.g. a future stale-sweep). Do not keep a
+    // hold on a job we no longer control.
+    await releaseHold(db, hold.holdId);
+    return { ok: false, reason: "not_startable" };
+  }
   return { ok: true, pageCount, heldMcr: amountMcr };
 }
