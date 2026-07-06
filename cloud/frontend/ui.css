@@ -3,6 +3,11 @@
    Palette + type per the Thothica brand system. Gold is seasoning, never fill.
    ========================================================================== */
 
+/* The hidden attribute must always win: view switching (login vs app) sets
+   it from app.js, and any display rule on the sections would otherwise
+   override the user agent's [hidden] { display: none }. */
+[hidden]{display:none !important}
+
 /* :root palette: pasted verbatim from the existing console stylesheet */
 :root{
   --brown:#624120; --brown2:#5A4530; --deep:#4F3419;
