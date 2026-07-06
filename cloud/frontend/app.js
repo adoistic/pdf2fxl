@@ -390,9 +390,14 @@ async function downloadArtifact(job, format, button, wrap) {
     const token = await getToken();
     const headers = new Headers();
     if (token) headers.set("Authorization", `Bearer ${token}`);
+    // Stored artifacts (md, doc) may answer with a 302 to a presigned R2 url when
+    // R2-direct is on; renders (epub, docx) stream the bytes back directly.
+    // "follow" (the default) lets the browser chase the redirect to R2. The
+    // browser drops the Authorization header when following a cross-origin
+    // redirect, and the presigned url needs no auth, so the R2 request succeeds.
     const response = await fetch(
       `/api/jobs/${job.id}/download?format=${format}`,
-      { headers }
+      { headers, redirect: "follow" }
     );
     if (!response.ok) {
       throw new Error(`request failed (${response.status})`);

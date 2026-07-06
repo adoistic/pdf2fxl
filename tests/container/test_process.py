@@ -92,6 +92,38 @@ def test_process_returns_artifacts():
     assert isinstance(body["figures"], list)
 
 
+def test_process_reads_input_url(monkeypatch):
+    """When ?input_url is given, the app fetches the PDF from that url (a presigned
+    R2 GET) instead of the request body, then processes normally."""
+    pdf = make_pdf(2)
+
+    class _Resp:
+        content = pdf
+
+        def raise_for_status(self):
+            return None
+
+    seen = {}
+
+    def fake_get(url, *args, **kwargs):
+        seen["url"] = url
+        return _Resp()
+
+    monkeypatch.setattr(appmod.httpx, "get", fake_get)
+
+    r = client.post(
+        "/process?mode=reflow&title=FromUrl&input_url=https://r2.example/presigned",
+        # No body: the app must fetch from input_url.
+        headers={"x-mistral-key": "test-key"},
+    )
+    assert r.status_code == 200, r.text
+    assert seen["url"] == "https://r2.example/presigned"
+    body = r.json()
+    assert body["page_count"] == 2
+    assert isinstance(body["doc_json"], dict)
+    assert body["doc_json"].get("nodes")
+
+
 def test_process_rejects_garbage():
     r = client.post(
         "/process?mode=reflow&title=Bad",

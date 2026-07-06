@@ -13,6 +13,7 @@ from itertools import count
 from pathlib import Path
 
 import cv2
+import httpx
 import pymupdf
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
@@ -117,7 +118,19 @@ def _ocr_pages_concurrent(pdf_path: str, cfg: Config, api_key: str) -> list:
 
 @app.post("/process")
 async def process(request: Request) -> dict:
-    pdf_bytes = await request.body()
+    # When the Worker runs R2-direct it passes ?input_url=<presigned R2 GET> and
+    # sends no body: fetch the PDF straight from R2 so the bytes never transit the
+    # Worker. Otherwise read the PDF from the request body (streaming fallback).
+    input_url = request.query_params.get("input_url")
+    if input_url:
+        try:
+            resp = httpx.get(input_url, timeout=120.0, follow_redirects=True)
+            resp.raise_for_status()
+            pdf_bytes = resp.content
+        except Exception as exc:  # network / presign expiry / R2 error
+            raise HTTPException(status_code=422, detail="could not fetch input") from exc
+    else:
+        pdf_bytes = await request.body()
     mode = request.query_params.get("mode", "reflow")
     title = request.query_params.get("title") or "Untitled"
     api_key = request.headers.get("x-mistral-key", "")

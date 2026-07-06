@@ -31,9 +31,13 @@ const artifacts: Awaited<ReturnType<ProcessFn>> = {
 };
 
 // Drain the streamed PDF like the real container fetch does, so the R2 object
-// body is consumed and the pool's isolated storage teardown stays happy.
-const stubProcess: ProcessFn = async (pdf) => {
-  if (pdf instanceof ReadableStream) await new Response(pdf).arrayBuffer();
+// body is consumed and the pool's isolated storage teardown stays happy. Under
+// r2Direct (true in tests) finalizeJob passes a url instead of the body, so the
+// stream branch is inert here; the R2 object is not read as a stream.
+const stubProcess: ProcessFn = async (input) => {
+  if (input.kind === "stream" && input.body instanceof ReadableStream) {
+    await new Response(input.body).arrayBuffer();
+  }
   return artifacts;
 };
 
@@ -73,8 +77,10 @@ describe("finalizeJob", () => {
 
   it("process throws: fails the job, releases the hold, keeps the upload", async () => {
     const { userId, jobId, uploadKey } = await processingJob();
-    const boom: ProcessFn = async (pdf) => {
-      if (pdf instanceof ReadableStream) await pdf.cancel();
+    const boom: ProcessFn = async (input) => {
+      if (input.kind === "stream" && input.body instanceof ReadableStream) {
+        await input.body.cancel();
+      }
       throw new Error("container 500");
     };
 
@@ -107,5 +113,18 @@ describe("finalizeJob", () => {
 
   it("skips an unknown job id", async () => {
     expect(await finalizeJob(env, "no-such-job", stubProcess)).toBe("skipped");
+  });
+
+  it("r2Direct: passes a presigned GET url instead of the body", async () => {
+    // The test env sets dummy R2 creds, so r2DirectEnabled() is true here.
+    const { jobId } = await processingJob();
+    let seen: string | undefined;
+    const capture: ProcessFn = async (input) => {
+      seen = input.kind === "url" ? input.inputUrl : "STREAM";
+      return artifacts;
+    };
+    expect(await finalizeJob(env, jobId, capture)).toBe("ready");
+    expect(seen).toContain("r2.cloudflarestorage.com");
+    expect(seen).toContain("X-Amz-Signature");
   });
 });

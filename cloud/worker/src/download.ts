@@ -1,4 +1,5 @@
 import type { Env } from "./types";
+import { r2DirectEnabled, presignGet } from "./presign";
 
 // The container render call is injected so tests never need a running container.
 export type RenderFn = (
@@ -9,12 +10,16 @@ export type RenderFn = (
 
 export type DownloadResult =
   | { ok: true; contentType: string; filename: string; body: ArrayBuffer | Uint8Array | string }
+  // R2-direct: the caller redirects the browser straight to a presigned R2 GET
+  // url, so the stored artifact bytes never transit the Worker.
+  | { ok: true; redirect: string }
   | { ok: false; status: 400 | 404 | 409; error: string };
 
 const CONTENT_TYPE: Record<string, string> = {
   epub: "application/epub+zip",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   md: "text/markdown; charset=utf-8",
+  doc: "application/json; charset=utf-8",
 };
 
 // A filesystem- and header-safe filename from the user's title. Never an internal
@@ -39,7 +44,7 @@ export async function buildDownload(
   format: string,
   render: RenderFn
 ): Promise<DownloadResult> {
-  if (format !== "epub" && format !== "docx" && format !== "md") {
+  if (format !== "epub" && format !== "docx" && format !== "md" && format !== "doc") {
     return { ok: false, status: 400, error: "unknown format" };
   }
   const row = await env.DB.prepare(
@@ -53,10 +58,23 @@ export async function buildDownload(
 
   const name = safeTitle(row.title);
 
-  if (format === "md") {
-    const obj = row.r2_md_key ? await env.STORE.get(row.r2_md_key) : null;
+  // Stored artifacts (markdown, raw doc.json) are served straight from R2. Under
+  // r2Direct we hand back a presigned GET url the caller redirects to, so the
+  // bytes never transit the Worker. Otherwise we stream them through as now.
+  if (format === "md" || format === "doc") {
+    const key = format === "md" ? row.r2_md_key : row.r2_doc_key;
+    if (!key) return { ok: false, status: 404, error: "not found" };
+    if (r2DirectEnabled(env)) {
+      // Verify the object exists so a missing artifact still 404s rather than
+      // redirecting to a url that would 404 at R2 with a raw XML body.
+      const head = await env.STORE.head(key);
+      if (!head) return { ok: false, status: 404, error: "not found" };
+      return { ok: true, redirect: await presignGet(env, key) };
+    }
+    const obj = await env.STORE.get(key);
     if (!obj) return { ok: false, status: 404, error: "not found" };
-    return { ok: true, contentType: CONTENT_TYPE.md, filename: `${name}.md`, body: await obj.text() };
+    const ext = format === "md" ? "md" : "doc.json";
+    return { ok: true, contentType: CONTENT_TYPE[format], filename: `${name}.${ext}`, body: await obj.text() };
   }
 
   const docObj = row.r2_doc_key ? await env.STORE.get(row.r2_doc_key) : null;

@@ -130,6 +130,8 @@ jobs.get("/:id/download", async (c) => {
     c.env, c.req.param("id"), c.get("user").id, c.req.query("format") ?? "", render
   );
   if (!result.ok) return c.json({ error: result.error }, result.status);
+  // R2-direct: send the browser straight to the presigned R2 url (no auth needed).
+  if ("redirect" in result) return c.redirect(result.redirect, 302);
   return new Response(result.body as BodyInit, {
     headers: {
       "content-type": result.contentType,

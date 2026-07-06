@@ -23,8 +23,10 @@ async function readyJob(title = "My Book") {
   await env.STORE.put(key, "%PDF-fake");
   const job = await createJob(env.DB, { userId, mode: "reflow", express: false, title, r2UploadKey: key });
   await startJob(env.DB, env.STORE, async () => ({ pageCount: 10 }), job.id, userId);
-  await finalizeJob(env, job.id, async (pdf) => {
-    if (pdf instanceof ReadableStream) await new Response(pdf).arrayBuffer();
+  await finalizeJob(env, job.id, async (input) => {
+    if (input.kind === "stream" && input.body instanceof ReadableStream) {
+      await new Response(input.body).arrayBuffer();
+    }
     return artifacts;
   });
   return { userId, jobId: job.id };
@@ -34,14 +36,31 @@ const stubRender: RenderFn = async (_doc, _figs, format) =>
   new TextEncoder().encode(format === "epub" ? "PK-epub-bytes" : "PK-docx-bytes");
 
 describe("buildDownload", () => {
-  it("streams stored markdown with a safe filename", async () => {
+  it("r2Direct: markdown download redirects to a presigned R2 url", async () => {
+    // The test env sets dummy R2 creds, so r2DirectEnabled() is true.
     const { userId, jobId } = await readyJob("A Nice Book!");
     const r = await buildDownload(env, jobId, userId, "md", stubRender);
     expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.contentType).toContain("text/markdown");
-      expect(r.filename).toBe("A-Nice-Book.md");
-      expect(r.body).toContain("# My Book");
+    if (r.ok && "redirect" in r) {
+      expect(r.redirect).toContain("r2.cloudflarestorage.com");
+      expect(r.redirect).toContain("X-Amz-Signature");
+      // The stored md key, url-encoded (the slashes stay), points at R2.
+      expect(r.redirect).toContain("normalized.md");
+    } else {
+      throw new Error("expected a redirect result under r2Direct");
+    }
+  });
+
+  it("r2Direct: doc.json download redirects to a presigned R2 url", async () => {
+    const { userId, jobId } = await readyJob();
+    const r = await buildDownload(env, jobId, userId, "doc", stubRender);
+    expect(r.ok).toBe(true);
+    if (r.ok && "redirect" in r) {
+      expect(r.redirect).toContain("r2.cloudflarestorage.com");
+      expect(r.redirect).toContain("X-Amz-Signature");
+      expect(r.redirect).toContain("normalized.json");
+    } else {
+      throw new Error("expected a redirect result under r2Direct");
     }
   });
 
@@ -49,10 +68,12 @@ describe("buildDownload", () => {
     const { userId, jobId } = await readyJob();
     const r = await buildDownload(env, jobId, userId, "epub", stubRender);
     expect(r.ok).toBe(true);
-    if (r.ok) {
+    if (r.ok && !("redirect" in r)) {
       expect(r.contentType).toBe("application/epub+zip");
       expect(r.filename).toBe("My-Book.epub");
       expect(new TextDecoder().decode(r.body as Uint8Array)).toBe("PK-epub-bytes");
+    } else {
+      throw new Error("epub should render bytes, not redirect");
     }
   });
 
@@ -60,7 +81,8 @@ describe("buildDownload", () => {
     const { userId, jobId } = await readyJob();
     const r = await buildDownload(env, jobId, userId, "docx", stubRender);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.filename).toBe("My-Book.docx");
+    if (r.ok && !("redirect" in r)) expect(r.filename).toBe("My-Book.docx");
+    else throw new Error("docx should render bytes, not redirect");
   });
 
   it("409s a job that is not ready", async () => {

@@ -1,12 +1,21 @@
 import type { Env } from "./types";
 import { captureHold, releaseHold } from "./ledger";
 import { failJob, transition, type Job } from "./jobs";
+import { r2DirectEnabled, presignGet } from "./presign";
 
 // The container call is injected so tests need no container or Mistral: the
 // queue handler passes the real container fetch, tests pass a stub returning
 // fixture artifacts.
+//
+// The input is either the PDF bytes (streaming fallback) or, when R2-direct is
+// on, a presigned GET url the container fetches straight from R2. finalizeJob
+// picks which; the injected fn just forwards whichever it is given.
+export type ProcessInput =
+  | { kind: "stream"; body: ReadableStream<Uint8Array> | ArrayBuffer }
+  | { kind: "url"; inputUrl: string };
+
 export type ProcessFn = (
-  pdf: ReadableStream<Uint8Array> | ArrayBuffer,
+  input: ProcessInput,
   job: Job
 ) => Promise<{
   page_count: number;
@@ -61,7 +70,15 @@ export async function finalizeJob(
   const job = toJob(row);
   if (job.status !== "processing") return "skipped";
 
-  const upload = job.r2UploadKey ? await env.STORE.get(job.r2UploadKey) : null;
+  // R2-direct only needs to know the upload exists (it passes a presigned url,
+  // not the bytes), so a head() avoids opening an undrained object body. The
+  // streaming fallback needs the body, so it does a full get().
+  const direct = r2DirectEnabled(env);
+  const upload = job.r2UploadKey
+    ? direct
+      ? await env.STORE.head(job.r2UploadKey)
+      : await env.STORE.get(job.r2UploadKey)
+    : null;
   if (!upload) {
     await failJob(env.DB, jobId, "processing", "we could not read this file", "upload gone");
     if (job.holdId != null) await releaseHold(env.DB, job.holdId);
@@ -69,10 +86,15 @@ export async function finalizeJob(
   }
 
   try {
-    // Stream the R2 object straight through to the container, so the Worker
-    // never holds the whole PDF in its isolate (the container needs the bytes,
-    // the Worker does not).
-    const out = await process(upload.body, job);
+    // R2-direct: hand the container a presigned GET url so it fetches the PDF
+    // straight from R2 (the bytes never transit the Worker). Fallback: stream
+    // the R2 object body straight through, so the Worker still never buffers the
+    // whole PDF in its isolate. Either way the upload object must exist (checked
+    // above), so an expired presign or missing object fails cleanly downstream.
+    const input: ProcessInput = direct
+      ? { kind: "url", inputUrl: await presignGet(env, job.r2UploadKey!) }
+      : { kind: "stream", body: (upload as R2ObjectBody).body };
+    const out = await process(input, job);
 
     const verbatimKey = `ocr/${jobId}/verbatim.json`;
     const docKey = `doc/${jobId}/normalized.json`;
@@ -128,10 +150,13 @@ export async function finalizeJob(
 // The real container process: stream the PDF to the engine's /process, pass the
 // Mistral key over the internal binding, parse the artifacts JSON.
 function realProcess(env: Env): ProcessFn {
-  return async (pdf, job) => {
+  return async (input, job) => {
     const engine = env.OCR_ENGINE.getByName("engine");
     const qs = new URLSearchParams({ mode: job.mode });
     if (job.title) qs.set("title", job.title);
+    // R2-direct: pass the presigned url and send no body; the container fetches
+    // the PDF from R2 itself. Fallback: stream the bytes as the request body.
+    if (input.kind === "url") qs.set("input_url", input.inputUrl);
     const res = await engine.fetch(
       new Request(`http://engine/process?${qs.toString()}`, {
         method: "POST",
@@ -139,7 +164,7 @@ function realProcess(env: Env): ProcessFn {
           "content-type": "application/pdf",
           "x-mistral-key": env.MISTRAL_API_KEY,
         },
-        body: pdf,
+        body: input.kind === "url" ? undefined : input.body,
       })
     );
     if (!res.ok) throw new Error(`engine /process ${res.status}`);
