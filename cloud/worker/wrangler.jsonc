@@ -21,7 +21,7 @@
     { "binding": "STORE", "bucket_name": "thothica-ocr" }
   ],
   "vars": {
-    "FIREBASE_PROJECT_ID": "",
+    "FIREBASE_PROJECT_ID": "thothica-ocr",
     "ADMIN_EMAIL": "adnan@thothica.com"
   },
   "observability": { "enabled": true }
