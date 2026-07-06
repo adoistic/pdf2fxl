@@ -39,4 +39,14 @@ describe("ledger: holds", () => {
     await expect(placeHold(env.DB, { userId, jobId: "job-4", amountMcr: 0 })).rejects.toThrow();
     await expect(placeHold(env.DB, { userId, jobId: "job-4", amountMcr: -5 })).rejects.toThrow();
   });
+
+  it("allows a hold equal to the full balance, then nothing more", async () => {
+    const userId = await createUser();
+    await fund(userId, 10_000);
+    const res = await placeHold(env.DB, { userId, jobId: "job-5", amountMcr: 10_000 });
+    expect(res.ok).toBe(true);
+    expect(await getBalanceMcr(env.DB, userId)).toBe(0);
+    const more = await placeHold(env.DB, { userId, jobId: "job-5b", amountMcr: 1 });
+    expect(more).toEqual({ ok: false, reason: "insufficient_credits" });
+  });
 });

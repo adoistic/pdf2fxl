@@ -16,7 +16,7 @@ export async function allocate(
   db: D1Database,
   opts: { userId: number; amountMcr: number; note: string | null; createdBy: string }
 ): Promise<number> {
-  if (!Number.isInteger(opts.amountMcr) || opts.amountMcr === 0) {
+  if (!Number.isSafeInteger(opts.amountMcr) || opts.amountMcr === 0) {
     throw new Error("allocation must be a non-zero integer amount");
   }
   const row = await db
@@ -36,12 +36,16 @@ export type HoldResult =
 // INSERT only happens when it covers the hold. D1 executes the statement
 // atomically, so two concurrent holds cannot both pass a balance that only
 // covers one of them.
+// One-active-hold-per-job is deliberately the jobs table's concern: the ledger is append-only, so a unique index on job_id here would forbid legitimate re-holds after a release. placeHold is NOT idempotent; callers must gate it on job state.
 export async function placeHold(
   db: D1Database,
   opts: { userId: number; jobId: string; amountMcr: number }
 ): Promise<HoldResult> {
-  if (!Number.isInteger(opts.amountMcr) || opts.amountMcr <= 0) {
+  if (!Number.isSafeInteger(opts.amountMcr) || opts.amountMcr <= 0) {
     throw new Error("hold amount must be a positive integer");
+  }
+  if (!opts.jobId) {
+    throw new Error("hold requires a job id");
   }
   const row = await db
     .prepare(
