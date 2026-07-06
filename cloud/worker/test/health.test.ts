@@ -9,6 +9,12 @@ describe("health", () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 
+  it("unknown api paths return the JSON error envelope", async () => {
+    const res = await app.request("/api/nope", {}, env);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
+  });
+
   it("exposes public config without vendor names", async () => {
     const res = await app.request("/api/config", {}, env);
     expect(res.status).toBe(200);

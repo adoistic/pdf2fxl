@@ -119,3 +119,18 @@ export async function releaseHold(db: D1Database, holdId: number): Promise<boole
     throw err;
   }
 }
+
+export type Settlement = { kind: "capture" | "release"; id: number } | null;
+
+// How a hold was settled, if at all. This is the disambiguation the comments
+// above point finalizers at: after a false from captureHold/releaseHold, this
+// tells "already captured (job delivered)" from "already released (refunded)".
+export async function getSettlement(db: D1Database, holdId: number): Promise<Settlement> {
+  const row = await db
+    .prepare(
+      "SELECT id, kind FROM credit_ledger WHERE ref_id = ?1 AND kind IN ('capture', 'release')"
+    )
+    .bind(holdId)
+    .first<{ id: number; kind: "capture" | "release" }>();
+  return row ? { kind: row.kind, id: row.id } : null;
+}

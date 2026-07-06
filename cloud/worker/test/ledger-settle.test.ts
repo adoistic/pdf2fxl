@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { allocate, captureHold, getBalanceMcr, placeHold, releaseHold } from "../src/ledger";
+import { allocate, captureHold, getBalanceMcr, getSettlement, placeHold, releaseHold } from "../src/ledger";
 import { createUser } from "./helpers";
 
 async function fundedHold(amountMcr: number, fundMcr = 100_000) {
@@ -12,6 +12,17 @@ async function fundedHold(amountMcr: number, fundMcr = 100_000) {
 }
 
 describe("ledger: capture and release", () => {
+  it("reports how a hold was settled", async () => {
+    const a = await fundedHold(7_000);
+    expect(await getSettlement(env.DB, a.holdId)).toBeNull();
+    await captureHold(env.DB, a.holdId);
+    expect((await getSettlement(env.DB, a.holdId))?.kind).toBe("capture");
+    const b = await fundedHold(7_000);
+    await releaseHold(env.DB, b.holdId);
+    expect((await getSettlement(env.DB, b.holdId))?.kind).toBe("release");
+    expect(await getSettlement(env.DB, 999_999)).toBeNull();
+  });
+
   it("capture keeps the charge; balance stays reduced", async () => {
     const { userId, holdId } = await fundedHold(7_000);
     expect(await captureHold(env.DB, holdId)).toBe(true);

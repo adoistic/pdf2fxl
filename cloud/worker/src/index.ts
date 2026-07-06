@@ -11,6 +11,10 @@ app.onError((err, c) => {
   return c.json({ error: "something went wrong" }, 500);
 });
 
+// Only /api/* reaches the Worker first (run_worker_first); other paths are
+// served by Workers Assets. So this JSON envelope applies to API misses only.
+app.notFound((c) => c.json({ error: "not found" }, 404));
+
 app.get("/api/health", (c) => c.json({ ok: true }));
 
 app.get("/api/config", (c) =>
