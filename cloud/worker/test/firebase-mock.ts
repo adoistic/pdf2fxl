@@ -1,7 +1,7 @@
 // Generates a real RSA keypair, serves its public JWK through fetchMock at
 // Google's JWKS URL, and signs Firebase-shaped ID tokens with the private key.
 // Auth tests therefore exercise genuine RS256 verification, not a stub.
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { exportJWK, generateKeyPair, SignJWT, type KeyLike } from "jose";
 
 export interface FirebaseMock {
   jwks: { keys: Record<string, unknown>[] };
@@ -18,7 +18,7 @@ export async function makeFirebaseMock(projectId: string): Promise<FirebaseMock>
   const jwk = { ...(await exportJWK(publicKey)), kid: "test-key", alg: "RS256", use: "sig" };
 
   async function sign(
-    key: CryptoKey,
+    key: KeyLike,
     kid: string,
     claims: { sub: string; email: string; name?: string },
     overrides: { issuer?: string; audience?: string; expiresAt?: number } = {}
