@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thothica OCR</title>
+  <link rel="stylesheet" href="/shell.css">
+</head>
+<body>
+  <main>
+    <h1>Thothica OCR</h1>
+    <p>Clean digital editions from any scan. Sign in is opening soon.</p>
+    <p class="status" id="status">checking service</p>
+  </main>
+  <script>
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then((b) => { document.getElementById('status').textContent = b.ok ? 'service online' : 'service degraded'; })
+      .catch(() => { document.getElementById('status').textContent = 'service offline'; });
+  </script>
+</body>
+</html>
