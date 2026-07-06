@@ -29,10 +29,26 @@ def _css(base_file: str, base_family: str, faces, stack) -> str:
     stack_css = ", ".join(f'"{s}"' for s in stack) + ", serif"
     lines += [
         f"html, body {{ font-family: {stack_css}; line-height: 1.5; margin: 1em; }}",
-        "h1, h2, h3, h4, h5, h6 { line-height: 1.2; }",
+        "p { margin: 0 0 0.8em; }",
+        # A clear, decreasing heading ladder so the recovered levels are visible
+        # (readers otherwise render h1..h6 nearly alike). Size steps down, and
+        # weight plus top margin reinforce the hierarchy.
+        "h1, h2, h3, h4, h5, h6 { line-height: 1.2; font-weight: 700; }",
+        "h1 { font-size: 2em;    margin: 1.2em 0 0.6em; }",
+        "h2 { font-size: 1.5em;  margin: 1.1em 0 0.5em; }",
+        "h3 { font-size: 1.25em; margin: 1em 0 0.4em; }",
+        "h4 { font-size: 1.1em;  margin: 1em 0 0.4em; }",
+        "h5 { font-size: 1em;    margin: 1em 0 0.3em; }",
+        "h6 { font-size: 0.9em;  margin: 1em 0 0.3em; font-weight: 600; }",
         "figure { margin: 1em 0; text-align: center; }",
         "img { max-width: 100%; height: auto; }",
         "figcaption { font-size: 0.9em; color: #444; }",
+        # Tables: real borders and padding so an HTML table reads as a table.
+        "table { border-collapse: collapse; margin: 1em auto; max-width: 100%; }",
+        "th, td { border: 1px solid #999; padding: 0.35em 0.6em; text-align: left; "
+        "vertical-align: top; }",
+        "th { background: #f0ece4; font-weight: 700; }",
+        "caption { font-size: 0.9em; color: #444; caption-side: bottom; padding-top: 0.4em; }",
     ]
     return "\n".join(lines) + "\n"
 
