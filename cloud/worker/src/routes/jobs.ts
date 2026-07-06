@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppUser, Env } from "../types";
 import { createJob, getJobForUser, listJobsForUser, type Job, type JobMode } from "../jobs";
 import { startJob } from "../start";
+import { buildDownload, type RenderFn } from "../download";
 
 // Deliverable ceiling: the body is buffered in the isolate (128MB memory) and
 // the edge caps request bodies near this size anyway. Larger scans need the
@@ -96,4 +97,30 @@ jobs.post("/:id/start", async (c) => {
   // streams the PDF to the container, stores artifacts, and marks it ready.
   await c.env.OCR_QUEUE.send({ jobId });
   return c.json({ ok: true, pageCount: result.pageCount, heldCredits: result.heldMcr / 1000 });
+});
+
+// Render EPUB/DOCX on demand from the stored doc.json; markdown streams directly.
+jobs.get("/:id/download", async (c) => {
+  const render: RenderFn = async (docJson, figures, format) => {
+    const engine = c.env.OCR_ENGINE.getByName("engine");
+    const res = await engine.fetch(
+      new Request("http://engine/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ doc_json: docJson, figures, format }),
+      })
+    );
+    if (!res.ok) throw new Error(`engine /render ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const result = await buildDownload(
+    c.env, c.req.param("id"), c.get("user").id, c.req.query("format") ?? "", render
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  return new Response(result.body as BodyInit, {
+    headers: {
+      "content-type": result.contentType,
+      "content-disposition": `attachment; filename="${result.filename}"`,
+    },
+  });
 });

@@ -15,15 +15,32 @@ from pathlib import Path
 import cv2
 import pymupdf
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response
 
 # The reflow engine lives in src/pdf2fxl; import it, never modify it.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO_ROOT / "src"))
 from pdf2fxl.config import Config  # noqa: E402
 from pdf2fxl.ingest import page_count, rasterize_page  # noqa: E402
-from pdf2fxl.reflow.pipeline_reflow import _trim  # noqa: E402
+from pdf2fxl.reflow import scripts as _scripts  # noqa: E402
+from pdf2fxl.reflow.docmodel import Doc  # noqa: E402
+from pdf2fxl.reflow.fonts import resolve_fonts  # noqa: E402
+from pdf2fxl.reflow.pipeline_reflow import _all_text, _trim  # noqa: E402
 from pdf2fxl.reflow.pipeline_reflow import convert_book_reflow  # noqa: E402
+from pdf2fxl.reflow.render_docx import render_docx  # noqa: E402
+from pdf2fxl.reflow.render_epub_reflow import write_epub_reflow  # noqa: E402
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+# The bundled Latin/Greek/Cyrillic base face, resolved absolutely so the renderer
+# finds it regardless of the process working directory.
+_BASE_FONT = str(_REPO_ROOT / "assets" / "fonts" / "NotoSerif-Regular.ttf")
+
+_RENDER_CONTENT_TYPE = {
+    "epub": "application/epub+zip",
+    "docx": ("application/vnd.openxmlformats-officedocument"
+             ".wordprocessingml.document"),
+}
 
 # Realtime OCR model that returns per-block bounding boxes (proven in the spike).
 # The engine's pinned mistral-ocr-4-0 is not what we want here; the batch-capable
@@ -160,6 +177,73 @@ async def process(request: Request) -> dict:
         raise
     except Exception as exc:  # never leak the key or an internal trace
         raise HTTPException(status_code=422, detail="processing failed") from exc
+    finally:
+        tmpdir.cleanup()
+
+
+@app.post("/render")
+async def render(request: Request) -> Response:
+    """Render a stored document to EPUB or DOCX on demand.
+
+    Pure compute: the Worker sends the normalized doc.json and the figure assets,
+    we reconstruct the Doc, lay the figures out where the renderers look for them,
+    and stream the bytes back. Nothing is stored; nothing is logged that could
+    leak. EPUB re-runs script detection + webfont resolution so a non-Latin book
+    embeds the right faces (a Latin-only book needs no network).
+    """
+    import json
+
+    body = await request.json()
+    fmt = body.get("format")
+    if fmt not in _RENDER_CONTENT_TYPE:
+        raise HTTPException(status_code=415, detail="unsupported format")
+
+    doc_json = body.get("doc_json") or {}
+    figures = body.get("figures") or []
+
+    try:
+        doc = Doc.from_json(json.dumps(doc_json))
+    except Exception as exc:  # malformed doc.json
+        raise HTTPException(status_code=422, detail="unreadable document") from exc
+
+    tmpdir = tempfile.TemporaryDirectory(prefix="thothica-render-")
+    try:
+        # The renderers resolve every figure as `assets_root / Path(src).name`
+        # (basename only), where src looks like "images/img-000.png". Writing each
+        # asset under a shared images dir keyed by basename matches that lookup for
+        # both the flat basename and the "images/..." forms the Doc references.
+        assets_root = Path(tmpdir.name) / "images"
+        assets_root.mkdir(parents=True, exist_ok=True)
+        for fig in figures:
+            name = fig.get("name") or ""
+            data = fig.get("base64") or ""
+            if not name or not data:
+                continue
+            dest = assets_root / Path(name).name
+            dest.write_bytes(base64.b64decode(data))
+
+        out_path = Path(tmpdir.name) / f"book.{fmt}"
+        try:
+            if fmt == "epub":
+                # Reproduce the auto script -> language/webfont step the pipeline
+                # does, so a faithful EPUB embeds the right script faces.
+                text = _all_text(doc)
+                counts = _scripts.script_counts(text)
+                detected = {s for s, n in counts.items() if n >= 3}
+                doc.language = _scripts.language_for(
+                    detected, counts, default=doc.language or "en")
+                webfonts = resolve_fonts(detected) if detected else []
+                write_epub_reflow(doc, out_path, font_path=_BASE_FONT,
+                                  assets_root=assets_root, webfonts=webfonts)
+            else:
+                render_docx(doc, out_path, assets_root=assets_root)
+        except HTTPException:
+            raise
+        except Exception as exc:  # never leak an internal trace
+            raise HTTPException(status_code=422, detail="render failed") from exc
+
+        data = out_path.read_bytes()
+        return Response(content=data, media_type=_RENDER_CONTENT_TYPE[fmt])
     finally:
         tmpdir.cleanup()
 

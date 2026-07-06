@@ -11,14 +11,15 @@ export type StartResult =
   | { ok: true; pageCount: number; heldMcr: number }
   | { ok: false; reason: "not_startable" | "insufficient_credits" | "engine_error" | "not_found" };
 
-async function rateFor(db: D1Database, mode: string, express: boolean): Promise<number> {
-  const keys = mode === "fixed" ? "rate_fixed_mcr" : "rate_reflow_mcr";
-  const { results } = await db
-    .prepare("SELECT key, value FROM config WHERE key IN (?1, 'express_surcharge_mcr')")
-    .bind(keys)
-    .all<{ key: string; value: string }>();
-  const cfg = Object.fromEntries(results.map((r) => [r.key, Number(r.value)]));
-  return cfg[keys] + (express ? cfg.express_surcharge_mcr : 0);
+// Single-tier pricing: one rate per mode, no express surcharge (removed 2026-07-06;
+// all OCR runs the same way and users never see a tier choice).
+async function rateFor(db: D1Database, mode: string): Promise<number> {
+  const key = mode === "fixed" ? "rate_fixed_mcr" : "rate_reflow_mcr";
+  const row = await db
+    .prepare("SELECT value FROM config WHERE key = ?1")
+    .bind(key)
+    .first<{ value: string }>();
+  return Number(row?.value);
 }
 
 export async function startJob(
@@ -53,7 +54,7 @@ export async function startJob(
     return { ok: false, reason: "engine_error" };
   }
 
-  const rateMcr = await rateFor(db, job.mode, job.express);
+  const rateMcr = await rateFor(db, job.mode);
   const amountMcr = rateMcr * pageCount;
   if (!Number.isSafeInteger(rateMcr) || rateMcr <= 0 || !Number.isSafeInteger(amountMcr) || amountMcr <= 0) {
     await failJob(
