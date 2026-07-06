@@ -76,6 +76,10 @@ def _process_ocr(image_bgr, cfg: Config, api_key: str) -> dict:
         document={"type": "image_url", "image_url": data_url},
         include_blocks=True,
         include_image_base64=False,
+        # Ask for HTML tables. Without this the table block content is markdown
+        # pipes ("| --- |"), which the reflow renderer emits literally; with it,
+        # the content is real <table> HTML that renders as a proper table.
+        table_format="html",
     )
     return resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
 

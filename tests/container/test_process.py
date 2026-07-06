@@ -9,6 +9,10 @@ from cloud.container.app import app
 
 client = TestClient(app)
 
+# Captured before the autouse _patch_ocr fixture replaces it, so a test can
+# exercise the genuine OCR wrapper (its request kwargs) rather than the fake.
+_REAL_PROCESS_OCR = appmod._process_ocr
+
 
 def make_pdf(pages: int) -> bytes:
     """A synthetic PDF with real text so rasterize+OCR have something to chew on."""
@@ -134,3 +138,30 @@ def test_process_rejects_garbage():
     assert "detail" in r.json()
     # never leak the key or internal traces
     assert "test-key" not in r.text
+
+
+def test_process_ocr_requests_html_tables(monkeypatch):
+    """The realtime OCR call must ask Mistral for HTML tables. Without
+    table_format='html' the block content is markdown pipes, which render as
+    literal '| --- |' text in the EPUB. Assert the kwarg is passed."""
+    captured = {}
+
+    class FakeOCR:
+        def process(self, **kwargs):
+            captured.update(kwargs)
+
+            class R:
+                def model_dump(self_inner):
+                    return {"pages": [{"dimensions": {"width": 10, "height": 10},
+                                       "blocks": []}]}
+            return R()
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            self.ocr = FakeOCR()
+
+    monkeypatch.setattr("mistralai.client.Mistral", FakeClient, raising=False)
+    import numpy as np
+    _REAL_PROCESS_OCR(np.zeros((10, 10, 3), dtype=np.uint8), appmod.Config(mode="reflow"), "k")
+    assert captured.get("table_format") == "html"
+    assert captured.get("include_blocks") is True
