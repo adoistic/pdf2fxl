@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import app from "../src/index";
+import { app } from "../src/index";
 
 describe("health", () => {
   it("responds ok without auth", async () => {

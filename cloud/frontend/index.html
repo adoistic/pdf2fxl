@@ -4,19 +4,262 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Thothica OCR</title>
-  <link rel="stylesheet" href="/shell.css">
+  <meta name="description" content="Clean digital editions from any scan.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Teachers:ital,wght@0,400;0,600;0,700;0,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/ui.css">
 </head>
 <body>
-  <main>
-    <h1>Thothica OCR</h1>
-    <p>Clean digital editions from any scan. Sign in is opening soon.</p>
-    <p class="status" id="status">checking service</p>
-  </main>
-  <script>
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then((b) => { document.getElementById('status').textContent = b.ok ? 'service online' : 'service degraded'; })
-      .catch(() => { document.getElementById('status').textContent = 'service offline'; });
-  </script>
+
+  <section id="login-view" class="login">
+    <div class="login__grid">
+
+      <div class="login__copy">
+        <header class="login__brand reveal d1">
+          <img class="login__logo" src="/thothica-logo.png" alt="Thothica">
+          <span class="login__product">OCR</span>
+        </header>
+
+        <p class="eyebrow reveal d2">AI-native knowledge infrastructure<span class="rule-gold"></span></p>
+        <h1 class="login__headline reveal d2">Clean digital editions from <em>any</em> scan.</h1>
+        <p class="login__lead reveal d3">Upload a scanned book. Thothica measures the type on every page, recovers the real chapter structure, and returns a clean reflowable edition.</p>
+
+        <div class="auth-card reveal d4">
+          <button id="google-signin-button" class="btn btn--google" type="button">
+            <svg class="btn__gmark" viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false">
+              <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62z"/>
+              <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86a5.4 5.4 0 0 1-5.07-3.71H.96v2.33A9 9 0 0 0 9 18z"/>
+              <path fill="#FBBC05" d="M3.93 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.96a9 9 0 0 0 0 8.08l2.97-2.33z"/>
+              <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.59A9 9 0 0 0 .96 4.96l2.97 2.33A5.4 5.4 0 0 1 9 3.58z"/>
+            </svg>
+            <span>Sign in with Google</span>
+          </button>
+
+          <div class="auth-card__divider" role="separator"><span>or use your email</span></div>
+
+          <div class="auth-card__email">
+            <label class="field-label" for="magic-link-email">Email</label>
+            <input id="magic-link-email" class="field" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email" spellcheck="false">
+            <button id="magic-link-button" class="btn btn--primary" type="button">Send me a sign in link</button>
+          </div>
+
+          <p id="magic-link-status" class="auth-card__status" hidden></p>
+          <p class="auth-card__note">No passwords. A one time link arrives in your inbox.</p>
+        </div>
+      </div>
+
+      <aside class="login__figure reveal d3">
+        <div class="figure-card">
+          <div class="figure-card__label">
+            <span class="figure-card__title">Type size across the whole book</span>
+            <span class="figure-card__tag">Measured, not guessed</span>
+          </div>
+          <svg class="figure-card__chart" viewBox="0 0 480 220" role="img" aria-label="Histogram of measured type sizes clustering into body and heading tiers">
+            <line x1="16" y1="184" x2="464" y2="184" stroke="#C9C2BA" stroke-width="1"/>
+            <g fill="#624120">
+              <rect x="150" y="70"  width="15" height="114" rx="2"/>
+              <rect x="168" y="52"  width="15" height="132" rx="2"/>
+              <rect x="186" y="44"  width="15" height="140" rx="2"/>
+              <rect x="204" y="60"  width="15" height="124" rx="2"/>
+              <rect x="222" y="88"  width="15" height="96"  rx="2"/>
+            </g>
+            <rect x="286" y="120" width="15" height="64" rx="2" fill="#8A6A45"/>
+            <rect x="304" y="132" width="15" height="52" rx="2" fill="#8A6A45"/>
+            <rect x="356" y="118" width="15" height="66" rx="2" fill="#9A7B52"/>
+            <rect x="418" y="128" width="15" height="56" rx="2" fill="#B8956A"/>
+            <g stroke="#B8956A" stroke-width="1" stroke-dasharray="3 3">
+              <line x1="258" y1="30" x2="258" y2="184"/>
+              <line x1="332" y1="30" x2="332" y2="184"/>
+              <line x1="392" y1="30" x2="392" y2="184"/>
+            </g>
+            <g font-family="Teachers, sans-serif" font-size="10.5" font-weight="700" letter-spacing=".08em" fill="#5A4530">
+              <text x="188" y="24" text-anchor="middle">BODY</text>
+              <text x="303" y="24" text-anchor="middle">H3</text>
+              <text x="363" y="24" text-anchor="middle">H2</text>
+              <text x="425" y="24" text-anchor="middle">H1</text>
+            </g>
+            <g font-family="Teachers, sans-serif" font-size="10" fill="#6F665E">
+              <text x="16" y="202">smaller type</text>
+              <text x="464" y="202" text-anchor="end">larger type</text>
+            </g>
+          </svg>
+          <p class="figure-card__cap">Body text carries the most character mass, so its size anchors the scale. The larger clusters become your heading levels.</p>
+        </div>
+        <p class="login__figure-note">This is how Thothica finds real chapters in scanned pages.</p>
+      </aside>
+
+    </div>
+  </section>
+
+  <section id="app-view" class="app" hidden>
+    <header class="app__bar">
+      <img class="app__logo" src="/thothica-logo.png" alt="Thothica">
+      <span class="app__spacer"></span>
+      <nav class="app__account" aria-label="Account">
+        <a id="admin-link" class="app__admin" href="#admin" hidden>Admin</a>
+        <span id="balance-chip" class="balance" hidden>
+          <span class="balance__dot" aria-hidden="true"></span>
+          <span id="balance-amount"></span>
+        </span>
+        <span id="user-email" class="app__email"></span>
+      </nav>
+      <button id="sign-out-button" class="btn btn--ghost" type="button">Sign out</button>
+    </header>
+
+    <main id="app-main" class="app__main">
+      <div class="app__grid">
+
+        <section class="panel panel--upload reveal d1" aria-labelledby="upload-heading">
+          <h2 id="upload-heading" class="panel__title">Start a new edition</h2>
+          <p class="panel__sub">Upload a scanned PDF and choose how you want it back.</p>
+
+          <div id="drop-zone" class="dropzone" role="button" tabindex="0"
+               aria-label="Choose a PDF, or drop one here">
+            <svg class="dropzone__icon" viewBox="0 0 24 24" width="28" height="28" fill="none"
+                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true" focusable="false">
+              <path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5L14 3z"/>
+              <path d="M14 3v4.5h4.5"/>
+              <path d="M12 16.5v-5"/>
+              <path d="M9.75 13.75 12 11.5l2.25 2.25"/>
+            </svg>
+            <p class="dropzone__line" id="drop-zone-line"><strong>Drop your PDF here</strong>, or browse for it</p>
+            <p class="dropzone__file" id="drop-zone-file" hidden></p>
+            <input id="file-input" type="file" accept="application/pdf,.pdf" hidden>
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="job-title">Title</label>
+            <input id="job-title" class="field" type="text" maxlength="200"
+                   placeholder="What should we call this book?" autocomplete="off">
+          </div>
+
+          <fieldset class="modes">
+            <legend class="field-label">Edition</legend>
+            <label class="mode">
+              <input type="radio" name="job-mode" value="reflow" checked>
+              <span class="mode__dot" aria-hidden="true"></span>
+              <span class="mode__text">
+                <span class="mode__name">Reflowable edition</span>
+                <span class="mode__price">0.9 credits per page</span>
+              </span>
+            </label>
+            <label class="mode">
+              <input type="radio" name="job-mode" value="fixed">
+              <span class="mode__dot" aria-hidden="true"></span>
+              <span class="mode__text">
+                <span class="mode__name">Fixed layout edition</span>
+                <span class="mode__price">3.0 credits per page</span>
+              </span>
+            </label>
+          </fieldset>
+
+          <div class="upload__actions">
+            <button id="upload-button" class="btn btn--primary" type="button">Create my edition</button>
+            <p class="upload__rate">You'll pay <strong id="rate-per-page">0.9</strong> credits per page, held when the scan starts.</p>
+          </div>
+
+          <p id="upload-status" class="upload-status" role="status" hidden></p>
+        </section>
+
+        <section class="jobs reveal d2" aria-labelledby="jobs-heading">
+          <div class="jobs__head">
+            <h2 id="jobs-heading" class="panel__title">Your editions</h2>
+            <span id="jobs-count" class="jobs__count" hidden></span>
+          </div>
+          <div id="jobs-list" class="jobs__list" aria-live="polite"></div>
+        </section>
+
+      </div>
+    </main>
+  </section>
+
+  <section id="admin-view" class="app admin" hidden>
+    <header class="app__bar">
+      <img class="app__logo" src="/thothica-logo.png" alt="Thothica">
+      <span class="app__admin-tag">Admin</span>
+      <span class="app__spacer"></span>
+      <nav class="app__account" aria-label="Account">
+        <a id="admin-back-link" class="app__admin" href="#">Back to editions</a>
+        <span id="admin-email" class="app__email"></span>
+      </nav>
+      <button id="admin-sign-out-button" class="btn btn--ghost" type="button">Sign out</button>
+    </header>
+
+    <main class="app__main">
+      <div class="admin__grid">
+
+        <section class="panel panel--allocate reveal d1" aria-labelledby="allocate-heading">
+          <h2 id="allocate-heading" class="panel__title">Allocate credits</h2>
+          <p class="panel__sub">Add credits to a reader, or subtract them to correct a mistake.</p>
+
+          <div class="upload__field">
+            <label class="field-label" for="allocate-email">Reader email</label>
+            <input id="allocate-email" class="field" type="email" placeholder="reader@example.com"
+                   autocomplete="off" inputmode="email" spellcheck="false">
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="allocate-credits">Credits</label>
+            <input id="allocate-credits" class="field" type="number" step="0.1"
+                   placeholder="e.g. 250" inputmode="decimal">
+            <p class="field-hint">Fractions are fine. A negative number takes credits back.</p>
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="allocate-note">Note <span class="field-optional">optional</span></label>
+            <input id="allocate-note" class="field" type="text" maxlength="200"
+                   placeholder="Why this adjustment?" autocomplete="off">
+          </div>
+
+          <div class="upload__actions">
+            <button id="allocate-button" class="btn btn--primary" type="button">Allocate credits</button>
+          </div>
+
+          <p id="allocate-status" class="upload-status" role="status" hidden></p>
+        </section>
+
+        <section class="users reveal d2" aria-labelledby="users-heading">
+          <div class="jobs__head">
+            <h2 id="users-heading" class="panel__title">Readers</h2>
+            <span id="users-count" class="jobs__count" hidden></span>
+          </div>
+
+          <div class="users__table" role="table" aria-label="Readers and balances">
+            <div class="users__thead" role="row">
+              <span role="columnheader">Reader</span>
+              <span role="columnheader">Name</span>
+              <span class="users__balcol" role="columnheader">Balance</span>
+            </div>
+            <div id="users-list" class="users__body" aria-live="polite"></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <div id="ledger-drawer" class="drawer" hidden>
+      <div class="drawer__scrim" data-drawer-close></div>
+      <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="ledger-title">
+        <header class="drawer__head">
+          <div class="drawer__heading">
+            <h2 id="ledger-title" class="drawer__title">Statement</h2>
+            <p id="ledger-sub" class="drawer__sub"></p>
+          </div>
+          <button id="ledger-close" class="drawer__close" type="button" aria-label="Close statement"
+                  data-drawer-close>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </header>
+        <div id="ledger-body" class="drawer__body" aria-live="polite"></div>
+      </aside>
+    </div>
+  </section>
+
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

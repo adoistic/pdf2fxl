@@ -35,8 +35,14 @@ code (`src/pdf2fxl/`) is reused as a library, untouched; its 82 fast tests keep 
 
 ## 3. Users, auth, admin
 
-- **Firebase Auth** on the client: Google sign in and email/password. The SPA sends
-  the Firebase ID token as a Bearer header on every API call.
+- **Firebase Auth** on the client: Google sign in and **email magic link only**
+  (passwordless; decided 2026-07-06 to avoid password reset and recovery
+  workflows entirely). No password UI anywhere. The SPA sends the Firebase ID
+  token as a Bearer header on every API call. Magic link sign ins arrive with
+  email_verified true, which the API requires.
+- Firebase project: `thothica-ocr` (created 2026-07-06). Email provider is set
+  passwordless via the Identity Toolkit API; authorized domains include
+  ocrwithai.com and the workers.dev host.
 - The Worker verifies tokens against Google public JWKS (cached); no server SDK
   needed. First verified request upserts the D1 user row.
 - **adnan@thothica.com is admin** (seeded). Admin capability is a D1 flag
@@ -50,14 +56,19 @@ code (`src/pdf2fxl/`) is reused as a library, untouched; its 82 fast tests keep 
 
 ## 4. Pricing and credits
 
-Rates are configuration (D1 table), not code:
+Rates are configuration (D1 table), not code. One price per pipeline, no tiers:
 
-| Pipeline | Batch (default) | Express |
-|---|---|---|
-| Reflow | 0.7 credits/page | 0.9 credits/page |
-| Fixed layout | 3.0 credits/page | 3.2 credits/page |
+| Pipeline | Credits/page |
+|---|---|
+| Reflow | 0.9 |
+| Fixed layout | 3.0 |
 
-Express surcharge is a flat 0.2 credits per page on either pipeline.
+Decided 2026-07-06: the batch-versus-express distinction is removed. The Mistral
+batch OCR endpoint does not return the bounding boxes the reflow geometry needs
+(verified against the live API), so all OCR runs on the realtime endpoint. That is
+an implementation detail; users never see "batch", "express", or "realtime". Reflow
+moved from 0.7 to 0.9 to cover the realtime processing; fixed layout stays at 3.0
+(already priced high). No express surcharge.
 
 **Ledger semantics.** The credit ledger is append only; a user's balance is the sum
 of their rows. Row kinds:

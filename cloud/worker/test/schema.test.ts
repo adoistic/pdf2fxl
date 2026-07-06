@@ -18,9 +18,10 @@ describe("schema", () => {
       value: string;
     }>();
     const cfg = Object.fromEntries(results.map((r) => [r.key, r.value]));
-    expect(cfg.rate_reflow_mcr).toBe("700");
+    // Single-tier pricing after migration 0004: reflow 0.9, fixed 3.0, no surcharge.
+    expect(cfg.rate_reflow_mcr).toBe("900");
     expect(cfg.rate_fixed_mcr).toBe("3000");
-    expect(cfg.express_surcharge_mcr).toBe("200");
+    expect(cfg.express_surcharge_mcr).toBe("0");
     expect(cfg.retention_hours).toBe("72");
   });
 

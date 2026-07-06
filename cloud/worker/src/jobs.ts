@@ -1,0 +1,117 @@
+// Job state machine. Every transition is a conditional UPDATE guarded by the
+// expected current status, so concurrent workers cannot double-drive a job.
+
+export type JobMode = "reflow" | "fixed";
+export type JobStatus =
+  | "received" | "preparing" | "awaiting_ocr" | "processing"
+  | "assembling" | "ready" | "failed";
+
+export interface Job {
+  id: string;
+  userId: number;
+  mode: JobMode;
+  express: boolean;
+  status: JobStatus;
+  title: string | null;
+  pageCount: number | null;
+  rateMcr: number | null;
+  holdId: number | null;
+  r2UploadKey: string | null;
+  errorPublic: string | null;
+  createdAt: string;
+}
+
+type JobRow = {
+  id: string; user_id: number; mode: JobMode; express: number; status: JobStatus;
+  title: string | null; page_count: number | null; rate_mcr: number | null;
+  hold_id: number | null; r2_upload_key: string | null; error_public: string | null;
+  created_at: string;
+};
+
+const COLS =
+  "id, user_id, mode, express, status, title, page_count, rate_mcr, hold_id, r2_upload_key, error_public, created_at";
+
+function toJob(r: JobRow): Job {
+  return {
+    id: r.id, userId: r.user_id, mode: r.mode, express: r.express === 1,
+    status: r.status, title: r.title, pageCount: r.page_count, rateMcr: r.rate_mcr,
+    holdId: r.hold_id, r2UploadKey: r.r2_upload_key, errorPublic: r.error_public,
+    createdAt: r.created_at,
+  };
+}
+
+export async function createJob(
+  db: D1Database,
+  opts: { id?: string; userId: number; mode: JobMode; express: boolean; title: string | null; r2UploadKey: string }
+): Promise<Job> {
+  const id = opts.id ?? crypto.randomUUID();
+  const row = await db
+    .prepare(
+      `INSERT INTO jobs (id, user_id, mode, express, title, r2_upload_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING ${COLS}`
+    )
+    .bind(id, opts.userId, opts.mode, opts.express ? 1 : 0, opts.title, opts.r2UploadKey)
+    .first<JobRow>();
+  return toJob(row!);
+}
+
+export async function getJobForUser(db: D1Database, id: string, userId: number): Promise<Job | null> {
+  const row = await db
+    .prepare(`SELECT ${COLS} FROM jobs WHERE id = ?1 AND user_id = ?2`)
+    .bind(id, userId)
+    .first<JobRow>();
+  return row ? toJob(row) : null;
+}
+
+export async function listJobsForUser(db: D1Database, userId: number): Promise<Job[]> {
+  const { results } = await db
+    .prepare(`SELECT ${COLS} FROM jobs WHERE user_id = ?1 ORDER BY created_at DESC, id DESC`)
+    .bind(userId)
+    .all<JobRow>();
+  return results.map(toJob);
+}
+
+// Extra columns settable on transition. Keys are whitelisted, never caller input.
+const TRANSITION_COLS = ["page_count", "rate_mcr", "hold_id", "batch_id", "engine_version"] as const;
+type TransitionExtra = Partial<Record<(typeof TRANSITION_COLS)[number], string | number>>;
+
+export async function transition(
+  db: D1Database,
+  id: string,
+  from: JobStatus,
+  to: JobStatus,
+  extra: TransitionExtra = {}
+): Promise<boolean> {
+  const sets = ["status = ?1", "updated_at = datetime('now')"];
+  const binds: (string | number)[] = [to];
+  for (const col of TRANSITION_COLS) {
+    const val = extra[col];
+    if (val !== undefined) {
+      binds.push(val);
+      sets.push(`${col} = ?${binds.length}`);
+    }
+  }
+  binds.push(id, from);
+  const res = await db
+    .prepare(`UPDATE jobs SET ${sets.join(", ")} WHERE id = ?${binds.length - 1} AND status = ?${binds.length}`)
+    .bind(...binds)
+    .run();
+  return res.meta.changes === 1;
+}
+
+export async function failJob(
+  db: D1Database,
+  id: string,
+  from: JobStatus,
+  errorPublic: string,
+  errorInternal: string
+): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `UPDATE jobs SET status = 'failed', error_public = ?1, error_internal = ?2,
+       updated_at = datetime('now') WHERE id = ?3 AND status = ?4`
+    )
+    .bind(errorPublic, errorInternal, id, from)
+    .run();
+  return res.meta.changes === 1;
+}

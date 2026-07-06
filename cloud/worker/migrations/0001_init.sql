@@ -14,9 +14,10 @@ CREATE TABLE users (
 -- kinds: allocation (admin grant/revoke), hold (negative reservation),
 -- capture (0-amount marker settling a hold as charged),
 -- release (positive refund settling a hold as cancelled).
--- REFERENCES clauses are documentation: the local test runtime does not
--- enforce foreign keys, so application code must not rely on them for
--- integrity.
+-- REFERENCES clauses ARE enforced: D1 (and the vitest workers pool) runs with
+-- PRAGMA foreign_keys = 1, verified 2026-07-06. Tests must create real parent
+-- rows; raw sqlite3 shells default foreign_keys off, so verify there with the
+-- pragma enabled.
 -- datetime('now') stores UTC as 'YYYY-MM-DD HH:MM:SS' (no timezone suffix);
 -- do not string-compare against ISO-8601 'Z' timestamps.
 CREATE TABLE credit_ledger (

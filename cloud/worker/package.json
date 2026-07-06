@@ -9,6 +9,7 @@
     "dev": "wrangler dev"
   },
   "dependencies": {
+    "@cloudflare/containers": "^0.3.7",
     "hono": "^4.6.0",
     "jose": "^5.9.0"
   },
