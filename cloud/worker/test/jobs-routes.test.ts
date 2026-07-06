@@ -36,12 +36,12 @@ function upload(params: string, body: BodyInit | null, headers: Record<string, s
 
 describe("job upload", () => {
   it("accepts a pdf, stores it in R2, creates a received job", async () => {
-    const res = await upload("mode=reflow&express=1&title=My%20Scan", PDF_BYTES);
+    const res = await upload("mode=reflow&title=My%20Scan", PDF_BYTES);
     expect(res.status).toBe(200);
     const job = (await res.json()) as { id: string; status: string; mode: string; express: boolean };
     expect(job.status).toBe("received");
     expect(job.mode).toBe("reflow");
-    expect(job.express).toBe(true);
+    expect(job.express).toBe(false);
     const row = await env.DB.prepare("SELECT r2_upload_key, title FROM jobs WHERE id = ?1")
       .bind(job.id).first<{ r2_upload_key: string; title: string }>();
     expect(row!.title).toBe("My Scan");

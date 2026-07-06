@@ -21,7 +21,6 @@ function publicJob(j: Job) {
 jobs.post("/", async (c) => {
   const user = c.get("user");
   const mode = c.req.query("mode");
-  const express = c.req.query("express") === "1";
   const title = c.req.query("title")?.slice(0, 200) || null;
   if (mode !== "reflow" && mode !== "fixed") {
     return c.json({ error: "mode must be reflow or fixed" }, 400);
@@ -34,7 +33,6 @@ jobs.post("/", async (c) => {
   if (!body) {
     return c.json({ error: "attach a PDF as the request body" }, 400);
   }
-  // Buffer to check the magic bytes; R2 needs a known length anyway.
   const bytes = new Uint8Array(await c.req.raw.arrayBuffer());
   if (bytes.byteLength > MAX_UPLOAD_BYTES) {
     return c.json({ error: "file is too large" }, 413);
@@ -47,7 +45,7 @@ jobs.post("/", async (c) => {
   const key = `uploads/${user.id}/${id}.pdf`;
   await c.env.STORE.put(key, bytes, { httpMetadata: { contentType: "application/pdf" } });
   const job = await createJob(c.env.DB, {
-    id, userId: user.id, mode: mode as JobMode, express, title, r2UploadKey: key,
+    id, userId: user.id, mode: mode as JobMode, express: false, title, r2UploadKey: key,
   });
   return c.json(publicJob(job));
 });
