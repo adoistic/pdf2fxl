@@ -7,7 +7,7 @@ export interface FirebaseMock {
   jwks: { keys: Record<string, unknown>[] };
   tokenFor(
     claims: { sub: string; email: string; name?: string },
-    overrides?: { issuer?: string; audience?: string; expiresAt?: number }
+    overrides?: { issuer?: string; audience?: string; expiresAt?: number; emailVerified?: boolean }
   ): Promise<string>;
   foreignTokenFor(claims: { sub: string; email: string }): Promise<string>;
 }
@@ -21,9 +21,13 @@ export async function makeFirebaseMock(projectId: string): Promise<FirebaseMock>
     key: KeyLike,
     kid: string,
     claims: { sub: string; email: string; name?: string },
-    overrides: { issuer?: string; audience?: string; expiresAt?: number } = {}
+    overrides: { issuer?: string; audience?: string; expiresAt?: number; emailVerified?: boolean } = {}
   ) {
-    return new SignJWT({ email: claims.email, ...(claims.name ? { name: claims.name } : {}) })
+    return new SignJWT({
+      email: claims.email,
+      email_verified: overrides.emailVerified ?? true,
+      ...(claims.name ? { name: claims.name } : {}),
+    })
       .setProtectedHeader({ alg: "RS256", kid })
       .setSubject(claims.sub)
       .setIssuer(overrides.issuer ?? `https://securetoken.google.com/${projectId}`)

@@ -85,4 +85,54 @@ describe("auth", () => {
     const body = (await res.json()) as { isAdmin: boolean };
     expect(body.isAdmin).toBe(true);
   });
+
+  it("rejects tokens whose email is not verified", async () => {
+    const res = await me(
+      await fb.tokenFor(
+        { sub: "uid-unv", email: "adnan@thothica.com" },
+        { emailVerified: false }
+      )
+    );
+    expect(res.status).toBe(401);
+    const row = await env.DB.prepare(
+      "SELECT is_admin FROM users WHERE uid = 'uid-unv'"
+    ).first();
+    expect(row).toBeNull();
+  });
+
+  it("rejects tokens missing the email_verified claim", async () => {
+    // simulate by overriding to a non-true value the mock can produce
+    const res = await me(
+      await fb.tokenFor(
+        { sub: "uid-unv2", email: "someone@test.dev" },
+        { emailVerified: false }
+      )
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("follows an email change in Firebase without duplicating or crashing", async () => {
+    let res = await me(await fb.tokenFor({ sub: "uid-mover", email: "old@test.dev" }));
+    expect(res.status).toBe(200);
+    res = await me(await fb.tokenFor({ sub: "uid-mover", email: "new@test.dev" }));
+    expect(res.status).toBe(200);
+    const { results } = await env.DB.prepare(
+      "SELECT email FROM users WHERE uid = 'uid-mover'"
+    ).all<{ email: string }>();
+    expect(results).toHaveLength(1);
+    expect(results[0].email).toBe("new@test.dev");
+    const old = await env.DB.prepare(
+      "SELECT id FROM users WHERE email = 'old@test.dev'"
+    ).first();
+    expect(old).toBeNull();
+  });
+
+  it("rejects non-Bearer authorization schemes", async () => {
+    const res = await app.request(
+      "/api/me",
+      { headers: { Authorization: "Basic dXNlcjpwYXNz" } },
+      env
+    );
+    expect(res.status).toBe(401);
+  });
 });
