@@ -40,12 +40,8 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["OcrEngine"] }
   ],
-  // Custom domain: the ocrwithai.com zone is already in this Cloudflare account,
-  // so deploy provisions the proxied DNS record and edge certificate automatically.
-  "routes": [
-    { "pattern": "ocrwithai.com", "custom_domain": true },
-    { "pattern": "www.ocrwithai.com", "custom_domain": true }
-  ],
+  // Keep the workers.dev URL live. Adding custom routes otherwise disables it.
+  "workers_dev": true,
   "vars": {
     "FIREBASE_PROJECT_ID": "thothica-ocr",
     "ADMIN_EMAIL": "adnan@thothica.com"
