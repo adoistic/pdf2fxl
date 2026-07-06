@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import type { AppUser, Env } from "../types";
 import { createJob, getJobForUser, listJobsForUser, type Job, type JobMode } from "../jobs";
 
-export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // ~300 scanned pages with headroom
+// Deliverable ceiling: the body is buffered in the isolate (128MB memory) and
+// the edge caps request bodies near this size anyway. Larger scans need the
+// streaming upload planned for 2b, not a bigger constant.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 export const jobs = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
