@@ -13,8 +13,7 @@
     {
       "binding": "DB",
       "database_name": "thothica-ocr",
-      // Placeholder: replaced with the real UUID by task 10 (wrangler d1 create). Deploy fails until then.
-      "database_id": "FILLED-IN-BY-TASK-10-STEP-2",
+      "database_id": "720d0d62-c689-46f3-aa17-79d6e4f0249e",
       "migrations_dir": "migrations"
     }
   ],
