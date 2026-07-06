@@ -35,4 +35,14 @@ describe("ledger: balance and allocation", () => {
     await allocate(env.DB, { userId, amountMcr: -20_000, note: "correction", createdBy: "adnan@thothica.com" });
     expect(await getBalanceMcr(env.DB, userId)).toBe(30_000);
   });
+
+  it("allocate rejects zero and non-integer amounts", async () => {
+    const userId = await createUser();
+    await expect(
+      allocate(env.DB, { userId, amountMcr: 0, note: null, createdBy: "x" })
+    ).rejects.toThrow();
+    await expect(
+      allocate(env.DB, { userId, amountMcr: 0.5, note: null, createdBy: "x" })
+    ).rejects.toThrow();
+  });
 });

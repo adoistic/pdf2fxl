@@ -27,3 +27,30 @@ export async function allocate(
     .first<{ id: number }>();
   return row!.id;
 }
+
+export type HoldResult =
+  | { ok: true; holdId: number }
+  | { ok: false; reason: "insufficient_credits" };
+
+// Single-statement check-and-insert: the SELECT computes the balance and the
+// INSERT only happens when it covers the hold. D1 executes the statement
+// atomically, so two concurrent holds cannot both pass a balance that only
+// covers one of them.
+export async function placeHold(
+  db: D1Database,
+  opts: { userId: number; jobId: string; amountMcr: number }
+): Promise<HoldResult> {
+  if (!Number.isInteger(opts.amountMcr) || opts.amountMcr <= 0) {
+    throw new Error("hold amount must be a positive integer");
+  }
+  const row = await db
+    .prepare(
+      `INSERT INTO credit_ledger (user_id, kind, amount_mcr, job_id)
+       SELECT ?1, 'hold', ?2, ?3
+       WHERE (SELECT COALESCE(SUM(amount_mcr), 0) FROM credit_ledger WHERE user_id = ?1) >= ?4
+       RETURNING id`
+    )
+    .bind(opts.userId, -opts.amountMcr, opts.jobId, opts.amountMcr)
+    .first<{ id: number }>();
+  return row ? { ok: true, holdId: row.id } : { ok: false, reason: "insufficient_credits" };
+}
