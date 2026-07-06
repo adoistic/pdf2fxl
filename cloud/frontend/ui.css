@@ -302,7 +302,7 @@ input{font:inherit}
 
 .modes{border:0; padding:0; margin:20px 0 0; min-width:0}
 .modes legend{padding:0; margin-bottom:8px}
-.mode, .express{
+.mode{
   position:relative;
   display:flex; align-items:flex-start; gap:12px;
   padding:13px 14px; cursor:pointer;
@@ -310,15 +310,13 @@ input{font:inherit}
   transition:border-color .2s var(--ease), background .2s var(--ease);
 }
 .mode + .mode{margin-top:8px}
-.express{margin-top:10px}
-.mode:hover, .express:hover{border-color:var(--gold)}
-.mode input, .express input{
+.mode:hover{border-color:var(--gold)}
+.mode input{
   position:absolute; width:1px; height:1px; margin:-1px;
   clip-path:inset(50%); overflow:hidden; white-space:nowrap;
 }
 .mode:has(input:checked){border-color:var(--brown); background:var(--cream)}
-.express:has(input:checked){border-color:var(--gold); background:var(--cream)}
-.mode:has(input:focus-visible), .express:has(input:focus-visible){
+.mode:has(input:focus-visible){
   outline:2px solid var(--gold); outline-offset:2px;
 }
 .mode__dot{
@@ -333,16 +331,6 @@ input{font:inherit}
 }
 .mode:has(input:checked) .mode__dot{border-color:var(--brown)}
 .mode:has(input:checked) .mode__dot::after{opacity:1; transform:none}
-.express__box{
-  display:inline-flex; align-items:center; justify-content:center;
-  flex:0 0 auto; width:18px; height:18px; margin-top:2px;
-  border:1.5px solid var(--line); border-radius:5px;
-  background:var(--card); color:var(--cream);
-  transition:background .18s var(--ease), border-color .18s var(--ease);
-}
-.express__box svg{opacity:0; transition:opacity .18s var(--ease)}
-.express:has(input:checked) .express__box{background:var(--brown); border-color:var(--brown)}
-.express:has(input:checked) .express__box svg{opacity:1}
 .mode__text{min-width:0}
 .mode__name{display:block; font-weight:600; font-size:15px; color:var(--deep); line-height:1.3}
 .mode__price{display:block; margin-top:1px; font-size:12.5px; color:var(--body)}
@@ -373,7 +361,7 @@ input{font:inherit}
 .jobs__list{display:flex; flex-direction:column; gap:12px}
 
 .job{
-  display:flex; align-items:center; gap:16px;
+  display:flex; align-items:flex-start; gap:16px;
   padding:16px 18px;
   background:var(--card); border:1px solid var(--line2); border-radius:var(--r-md);
   box-shadow:var(--shadow-sm);
@@ -385,17 +373,35 @@ input{font:inherit}
   color:var(--deep);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
-.job__express{
-  flex:0 0 auto;
-  font-weight:700; font-size:10px; letter-spacing:.16em; text-transform:uppercase;
-  color:var(--gold); border:1px solid rgba(184,149,106,.5); border-radius:999px;
-  padding:3px 8px 2px; line-height:1;
-}
 .job__meta{margin-top:3px; font-size:13px; color:var(--body)}
 .job__error{margin-top:5px; font-size:13px; line-height:1.5; color:var(--brick)}
 
+/* ---- ready job downloads: secondary pill buttons, gold as seasoning -------*/
+.downloads{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+  margin-top:12px;
+}
+.download-btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:34px; padding:7px 15px;
+  background:var(--card); color:var(--brown); border:1px solid var(--line);
+  border-radius:999px;
+  font-family:var(--sans); font-weight:600; font-size:13px; letter-spacing:.01em;
+  white-space:nowrap;
+  transition:border-color .2s var(--ease), color .2s var(--ease),
+             background .2s var(--ease), box-shadow .2s var(--ease);
+}
+.download-btn:hover{border-color:var(--gold); color:var(--deep); box-shadow:var(--shadow-sm)}
+.download-btn:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.download-btn.is-loading{color:var(--body); border-color:var(--line2); cursor:default}
+.download-btn:disabled{cursor:default}
+.downloads__error{
+  flex-basis:100%;
+  margin-top:2px; font-size:12.5px; line-height:1.5; color:var(--brick);
+}
+
 .status{
-  flex:0 0 auto;
+  flex:0 0 auto; margin-top:2px;
   display:inline-flex; align-items:center; gap:7px;
   padding:6px 12px 5px; line-height:1.2;
   border:1px solid var(--line2); border-radius:999px; background:var(--page);

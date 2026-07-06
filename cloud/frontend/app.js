@@ -24,7 +24,6 @@ const dropZoneLine = document.getElementById("drop-zone-line");
 const dropZoneFile = document.getElementById("drop-zone-file");
 const fileInput = document.getElementById("file-input");
 const jobTitle = document.getElementById("job-title");
-const expressToggle = document.getElementById("express-toggle");
 const ratePerPage = document.getElementById("rate-per-page");
 const uploadButton = document.getElementById("upload-button");
 const uploadStatus = document.getElementById("upload-status");
@@ -49,14 +48,12 @@ const ledgerBody = document.getElementById("ledger-body");
 const ledgerClose = document.getElementById("ledger-close");
 
 // Per page prices, in credits. Keep in sync with cloud/worker/src/ledger.ts.
-const RATES = { reflow: 0.7, fixed: 3.0, express: 0.2 };
+const RATES = { reflow: 0.9, fixed: 3.0 };
 
 const STATUS_LABELS = {
   received: "Received",
   preparing: "Reading your pages",
-  processing: "In the OCR queue",
-  awaiting_ocr: "In the OCR queue",
-  assembling: "Assembling your edition",
+  processing: "Reading your pages",
   ready: "Ready",
   failed: "Failed",
 };
@@ -96,13 +93,13 @@ const FIXTURE_ME = {
 };
 
 const FIXTURE_JOBS = [
-  { id: "fx-1", mode: "reflow", express: false, status: "received", title: "Mughal Gardens survey", pageCount: null, error: null, createdAt: agoIso(40 * 1000) },
-  { id: "fx-2", mode: "reflow", express: true, status: "preparing", title: "Kitab al-Aghani, volume 3", pageCount: null, error: null, createdAt: agoIso(3 * 60 * 1000) },
-  { id: "fx-3", mode: "reflow", express: false, status: "processing", title: "The Deccan Sultanates", pageCount: 412, error: null, createdAt: agoIso(18 * 60 * 1000) },
-  { id: "fx-4", mode: "fixed", express: false, status: "awaiting_ocr", title: null, pageCount: 96, error: null, createdAt: agoIso(52 * 60 * 1000) },
-  { id: "fx-5", mode: "fixed", express: true, status: "assembling", title: "Persian Miniatures, plates", pageCount: 58, error: null, createdAt: agoIso(4 * 60 * 60 * 1000) },
-  { id: "fx-6", mode: "reflow", express: false, status: "ready", title: "A Grammar of the Persian Language", pageCount: 214, error: null, createdAt: agoIso(30 * 60 * 60 * 1000) },
-  { id: "fx-7", mode: "reflow", express: false, status: "failed", title: "Field notebook, 1911", pageCount: null, error: "we could not read this file", createdAt: agoIso(3 * 24 * 60 * 60 * 1000) },
+  { id: "fx-1", mode: "reflow", status: "received", title: "Mughal Gardens survey", pageCount: null, error: null, createdAt: agoIso(40 * 1000) },
+  { id: "fx-2", mode: "reflow", status: "preparing", title: "Kitab al-Aghani, volume 3", pageCount: null, error: null, createdAt: agoIso(3 * 60 * 1000) },
+  { id: "fx-3", mode: "reflow", status: "processing", title: "The Deccan Sultanates", pageCount: 412, error: null, createdAt: agoIso(18 * 60 * 1000) },
+  { id: "fx-4", mode: "fixed", status: "processing", title: null, pageCount: 96, error: null, createdAt: agoIso(52 * 60 * 1000) },
+  { id: "fx-5", mode: "reflow", status: "ready", title: "Persian Miniatures, plates", pageCount: 58, error: null, createdAt: agoIso(4 * 60 * 60 * 1000) },
+  { id: "fx-6", mode: "reflow", status: "ready", title: "A Grammar of the Persian Language", pageCount: 214, error: null, createdAt: agoIso(30 * 60 * 60 * 1000) },
+  { id: "fx-7", mode: "reflow", status: "failed", title: "Field notebook, 1911", pageCount: null, error: "we could not read this file", createdAt: agoIso(3 * 24 * 60 * 60 * 1000) },
 ];
 
 const FIXTURE_USERS = [
@@ -311,9 +308,6 @@ function renderJob(job) {
   const main = el("div", "job__main");
   const titleRow = el("div", "job__titlerow");
   titleRow.appendChild(el("h3", "job__title", job.title || "Untitled scan"));
-  if (job.express) {
-    titleRow.appendChild(el("span", "job__express", "Express"));
-  }
   main.appendChild(titleRow);
 
   const meta = [MODE_LABELS[job.mode] || job.mode];
@@ -327,6 +321,10 @@ function renderJob(job) {
   if (job.status === "failed" && job.error) {
     main.appendChild(el("p", "job__error", sentence(job.error)));
   }
+
+  if (job.status === "ready") {
+    main.appendChild(renderDownloads(job));
+  }
   row.appendChild(main);
 
   const chip = el("span", `status ${statusClass(job.status)}`.trim());
@@ -335,6 +333,81 @@ function renderJob(job) {
   row.appendChild(chip);
 
   return row;
+}
+
+// The three downloadable formats. Labels are reader facing, `format` is the
+// query value the download route expects.
+const DOWNLOAD_FORMATS = [
+  { format: "epub", label: "EPUB" },
+  { format: "docx", label: "Word" },
+  { format: "md", label: "Markdown" },
+];
+
+function renderDownloads(job) {
+  const wrap = el("div", "downloads");
+  for (const { format, label } of DOWNLOAD_FORMATS) {
+    const button = el("button", "download-btn", label);
+    button.type = "button";
+    button.addEventListener("click", () => downloadArtifact(job, format, button, wrap));
+    wrap.appendChild(button);
+  }
+  const err = el("p", "downloads__error");
+  err.hidden = true;
+  wrap.appendChild(err);
+  return wrap;
+}
+
+// The download route needs the Firebase bearer token, so a plain link cannot
+// carry it. Fetch with the same token source api() uses, turn the response
+// into a blob, and click a throwaway object URL so the browser saves the file.
+async function downloadArtifact(job, format, button, wrap) {
+  const err = wrap.querySelector(".downloads__error");
+  err.hidden = true;
+  button.disabled = true;
+  button.classList.add("is-loading");
+  const label = button.textContent;
+  button.textContent = "Preparing...";
+
+  try {
+    const token = await getToken();
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(
+      `/api/jobs/${job.id}/download?format=${format}`,
+      { headers }
+    );
+    if (!response.ok) {
+      throw new Error(`request failed (${response.status})`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = downloadName(job, format);
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("download failed", e);
+    err.textContent = "That download did not come through. Try again in a moment.";
+    err.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.classList.remove("is-loading");
+    button.textContent = label;
+  }
+}
+
+// A friendly filename from the title, never an internal id. The server sets the
+// real content-disposition; this is the fallback the object URL click uses.
+function downloadName(job, format) {
+  const base = (job.title || "edition")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "edition";
+  return `${base}.${format}`;
 }
 
 function renderJobs(jobs) {
@@ -627,8 +700,7 @@ function selectedMode() {
 }
 
 function updateRateNote() {
-  const rate = RATES[selectedMode()] + (expressToggle.checked ? RATES.express : 0);
-  ratePerPage.textContent = rate.toFixed(1);
+  ratePerPage.textContent = RATES[selectedMode()].toFixed(1);
 }
 
 function showUploadStatus(message, kind) {
@@ -680,7 +752,6 @@ async function submitUpload() {
   try {
     const params = new URLSearchParams({
       mode: selectedMode(),
-      express: expressToggle.checked ? "1" : "0",
     });
     const title = jobTitle.value.trim();
     if (title) params.set("title", title);
@@ -742,7 +813,6 @@ function wireUploadPanel() {
   for (const radio of document.querySelectorAll('input[name="job-mode"]')) {
     radio.addEventListener("change", updateRateNote);
   }
-  expressToggle.addEventListener("change", updateRateNote);
   updateRateNote();
 
   uploadButton.addEventListener("click", () => {
