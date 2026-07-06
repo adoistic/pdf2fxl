@@ -14,6 +14,11 @@ CREATE TABLE users (
 -- kinds: allocation (admin grant/revoke), hold (negative reservation),
 -- capture (0-amount marker settling a hold as charged),
 -- release (positive refund settling a hold as cancelled).
+-- REFERENCES clauses are documentation: the local test runtime does not
+-- enforce foreign keys, so application code must not rely on them for
+-- integrity.
+-- datetime('now') stores UTC as 'YYYY-MM-DD HH:MM:SS' (no timezone suffix);
+-- do not string-compare against ISO-8601 'Z' timestamps.
 CREATE TABLE credit_ledger (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -23,7 +28,19 @@ CREATE TABLE credit_ledger (
   ref_id INTEGER REFERENCES credit_ledger(id),
   note TEXT,
   created_by TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Sign/magnitude invariant per kind: a wrong-signed row would silently
+  -- corrupt the balance (= SUM(amount_mcr) per user).
+  CHECK (
+    (kind = 'hold' AND amount_mcr < 0)
+    OR (kind = 'capture' AND amount_mcr = 0)
+    OR (kind = 'release' AND amount_mcr > 0)
+    OR (kind = 'allocation' AND amount_mcr <> 0)
+  ),
+  -- Settlements (capture/release) must reference the hold they settle; this
+  -- closes the NULL bypass of ux_ledger_settlement below (SQLite excludes
+  -- NULL from unique indexes), so "settled exactly once" is fully enforced.
+  CHECK (kind NOT IN ('capture', 'release') OR ref_id IS NOT NULL)
 );
 
 -- A hold can be settled exactly once (either captured or released), enforced

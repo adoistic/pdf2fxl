@@ -39,4 +39,47 @@ describe("schema", () => {
       ).bind(user!.id, hold!.id).run()
     ).rejects.toThrow(/UNIQUE/);
   });
+
+  it("rejects an unknown ledger kind", async () => {
+    await env.DB.prepare("INSERT INTO users (email) VALUES ('schema-kind@test.dev')").run();
+    const user = await env.DB.prepare("SELECT id FROM users WHERE email = 'schema-kind@test.dev'").first<{ id: number }>();
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO credit_ledger (user_id, kind, amount_mcr) VALUES (?1, 'refund', -700)"
+      ).bind(user!.id).run()
+    ).rejects.toThrow(/CHECK/);
+  });
+
+  it("rejects a positive hold", async () => {
+    await env.DB.prepare("INSERT INTO users (email) VALUES ('schema-hold@test.dev')").run();
+    const user = await env.DB.prepare("SELECT id FROM users WHERE email = 'schema-hold@test.dev'").first<{ id: number }>();
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO credit_ledger (user_id, kind, amount_mcr) VALUES (?1, 'hold', 700)"
+      ).bind(user!.id).run()
+    ).rejects.toThrow(/CHECK/);
+  });
+
+  it("rejects a capture with a nonzero amount", async () => {
+    await env.DB.prepare("INSERT INTO users (email) VALUES ('schema-capture@test.dev')").run();
+    const user = await env.DB.prepare("SELECT id FROM users WHERE email = 'schema-capture@test.dev'").first<{ id: number }>();
+    const hold = await env.DB.prepare(
+      "INSERT INTO credit_ledger (user_id, kind, amount_mcr) VALUES (?1, 'hold', -700) RETURNING id"
+    ).bind(user!.id).first<{ id: number }>();
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO credit_ledger (user_id, kind, amount_mcr, ref_id) VALUES (?1, 'capture', 999, ?2)"
+      ).bind(user!.id, hold!.id).run()
+    ).rejects.toThrow(/CHECK/);
+  });
+
+  it("rejects a settlement without a hold reference", async () => {
+    await env.DB.prepare("INSERT INTO users (email) VALUES ('schema-noref@test.dev')").run();
+    const user = await env.DB.prepare("SELECT id FROM users WHERE email = 'schema-noref@test.dev'").first<{ id: number }>();
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO credit_ledger (user_id, kind, amount_mcr) VALUES (?1, 'capture', 0)"
+      ).bind(user!.id).run()
+    ).rejects.toThrow(/CHECK/);
+  });
 });
