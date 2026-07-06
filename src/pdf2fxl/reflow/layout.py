@@ -77,6 +77,64 @@ from .segment import is_heading_type
 
 _SENT_END = tuple(".!?।॥\"')]")   # incl. Devanagari danda/double danda
 
+# A leading section number ("5 ", "2.1. ", "IV. ") that must never be stripped.
+_LEADING_NUM = _re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?|[IVXLCDM]+\.|[०-९]+[.।]?)\s+")
+# A dot-leader run: 3+ dots, optionally spaced ("....", ". . .").
+_DOT_LEADERS = _re.compile(r"(?:\.\s?){3,}")
+# Classic TOC shape: "title  ....  N" or "title <dot-leaders> N".
+_TOC_SHAPE = _re.compile(r"^.+\s+\.{2,}.*\d+\s*$")
+
+
+def strip_heading_page_number(text: str) -> str:
+    """Remove a trailing standalone page number from a heading's text.
+
+    Strips a run of 1-4 trailing digits ONLY when it is clearly a page number:
+    separated by whitespace, and the remaining heading still has >= 2 other
+    words after removing any leading section number. Never touches leading
+    chapter numbers, dotted section numbers, or headings that are only a
+    number (those are left to strip_running)."""
+    if not text:
+        return text
+    m = _re.match(r"^(.*?)\s+(\d{1,4})\s*$", text)
+    if not m:
+        return text
+    head = m.group(1).rstrip()
+    if not head:
+        return text  # heading is only a number
+    # Count words after dropping any leading section number, so "5 The Holobiont"
+    # (leading "5") still counts "The", "Holobiont" but "Chapter 21" -> "Chapter"
+    # (one word) is preserved.
+    body = _LEADING_NUM.sub("", head, count=1)
+    if len(body.split()) < 2:
+        return text
+    return head
+
+
+def is_toc_line(text: str) -> bool:
+    """A table-of-contents line: has a dot-leader run, or the classic
+    "title  ....  page-number" shape."""
+    if not text:
+        return False
+    if _DOT_LEADERS.search(text):
+        return True
+    if _TOC_SHAPE.match(text):
+        return True
+    return False
+
+
+def clean_headings(segments: List[Segment]) -> None:
+    """In place: demote TOC-style heading blocks to normal text, and strip
+    trailing page numbers from the remaining real headings. Run BEFORE level
+    assignment so demoted lines never get a heading level. Non-heading blocks
+    are left untouched."""
+    for s in segments:
+        if not is_heading_type(s.type):
+            continue
+        if is_toc_line(s.text):
+            s.type = "text"
+            continue
+        s.text = strip_heading_page_number(s.text)
+
 
 def order_segments(segments: List[Segment]) -> List[Segment]:
     """Sort by (page, column, y, x) and assign global .order."""

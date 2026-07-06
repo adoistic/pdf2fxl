@@ -8,7 +8,7 @@ from .segment import Segment, is_heading_type
 from .typesize import measure_segment, detect_weight_centering
 from .hierarchy import body_size, assign_levels
 from .layout import (detect_columns, strip_running, order_segments,
-                     merge_dropcaps, rejoin_paragraphs)
+                     merge_dropcaps, rejoin_paragraphs, clean_headings)
 from .crop import crop_region, width_frac, classify_image
 from .docmodel import (Doc, Heading, Paragraph, Run, Figure, Table, ChapterBreak)
 
@@ -50,6 +50,7 @@ def build_doc(pages: List[PageInput], title: str, language: str,
 
     flat: List[Segment] = [s for page in per_page for s in page]
     body_px = body_size(flat)
+    clean_headings(flat)   # strip trailing page numbers; demote TOC lines to text
     assign_levels(flat)
     ordered = order_segments(flat)
     ordered = merge_dropcaps(ordered, body_px=body_px)

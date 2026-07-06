@@ -29,3 +29,20 @@ def test_build_doc_emits_heading_then_paragraph(tmp_path):
     assert "ChapterBreak" in kinds[:hi + 1]
     h = next(n for n in doc.nodes if isinstance(n, Heading))
     assert h.level == 1 and h.text == "Chapter One"
+
+
+def test_build_doc_strips_page_number_and_demotes_toc(tmp_path):
+    img = _text_img()
+    segs = [
+        # TOC-style line OCR'd as a heading -> must NOT become a Heading node
+        Segment(0, "section_header", (20, 10, 260, 24),
+                "Part 1. Gene-Focused Approaches . . . . . . 19"),
+        # real heading with a trailing running-header page number -> stripped
+        Segment(0, "title", (20, 80, 260, 24), "5 The Holobiont 51"),
+    ]
+    doc = build_doc([PageInput(img, (300, 400), segs)],
+                    title="T", language="en", assets_dir=tmp_path)
+    headings = [n.text for n in doc.nodes if isinstance(n, Heading)]
+    assert "5 The Holobiont" in headings
+    assert not any("Holobiont 51" in t for t in headings)
+    assert not any("Gene-Focused" in t for t in headings)  # demoted to text
