@@ -52,3 +52,37 @@ admin.get("/users", async (c) => {
     })),
   });
 });
+
+admin.get("/users/:id/ledger", async (c) => {
+  const userId = Number(c.req.param("id"));
+  if (!Number.isInteger(userId)) return c.json({ error: "not found" }, 404);
+  const exists = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?1")
+    .bind(userId)
+    .first<{ id: number }>();
+  if (!exists) return c.json({ error: "not found" }, 404);
+  const { results } = await c.env.DB.prepare(
+    `SELECT kind, amount_mcr, job_id, ref_id, note, created_by, created_at
+     FROM credit_ledger WHERE user_id = ?1 ORDER BY id DESC`
+  )
+    .bind(userId)
+    .all<{
+      kind: string;
+      amount_mcr: number;
+      job_id: string | null;
+      ref_id: number | null;
+      note: string | null;
+      created_by: string | null;
+      created_at: string;
+    }>();
+  return c.json({
+    entries: results.map((r) => ({
+      kind: r.kind,
+      amountMcr: r.amount_mcr,
+      jobId: r.job_id,
+      refId: r.ref_id,
+      note: r.note,
+      createdBy: r.created_by,
+      createdAt: r.created_at,
+    })),
+  });
+});
