@@ -62,7 +62,7 @@ describe("jobs schema", () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd "cloud/worker" && npx vitest run test/jobs-schema.test.ts` — expect FAIL (no such table: jobs).
+Run: `cd "cloud/worker" && npx vitest run test/jobs-schema.test.ts`: expect FAIL (no such table: jobs).
 
 - [ ] **Step 3: Write the migration**
 
@@ -104,7 +104,7 @@ CREATE INDEX ix_jobs_status ON jobs(status);
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `npx vitest run test/jobs-schema.test.ts` then full `npx vitest run` — expect 52 passed (50 + 2).
+Run: `npx vitest run test/jobs-schema.test.ts` then full `npx vitest run`: expect 52 passed (50 + 2).
 
 - [ ] **Step 5: Commit**
 
@@ -139,7 +139,7 @@ describe("r2 binding", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure** — `npx vitest run test/r2.test.ts` fails (STORE undefined / type error).
+- [ ] **Step 2: Run to verify failure**: `npx vitest run test/r2.test.ts` fails (STORE undefined / type error).
 
 - [ ] **Step 3: Implement**
 
@@ -153,7 +153,7 @@ wrangler.jsonc, add sibling of `d1_databases`:
 
 `src/types.ts`: add `STORE: R2Bucket;` to `Env`.
 
-- [ ] **Step 4: Run to verify pass** — full suite 53 passed. (Miniflare provisions a local R2 from config; no real bucket needed for tests.)
+- [ ] **Step 4: Run to verify pass**: full suite 53 passed. (Miniflare provisions a local R2 from config; no real bucket needed for tests.)
 
 - [ ] **Step 5: Create the real bucket and commit**
 
@@ -225,7 +225,7 @@ describe("jobs module", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure** — cannot resolve `../src/jobs`.
+- [ ] **Step 2: Run to verify failure**: cannot resolve `../src/jobs`.
 
 - [ ] **Step 3: Implement**
 
@@ -351,7 +351,7 @@ export async function failJob(
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — full suite 56 passed.
+- [ ] **Step 4: Run to verify pass**: full suite 56 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -455,7 +455,7 @@ describe("job upload", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure** — 404s (routes missing).
+- [ ] **Step 2: Run to verify failure**: 404s (routes missing).
 
 - [ ] **Step 3: Implement**
 
@@ -539,7 +539,7 @@ app.use("/api/jobs/*", authRequired);
 app.route("/api/jobs", jobs);
 ```
 
-- [ ] **Step 4: Run to verify pass** — full suite 61 passed (56 + 5). `npx tsc --noEmit` clean.
+- [ ] **Step 4: Run to verify pass**: full suite 61 passed (56 + 5). `npx tsc --noEmit` clean.
 
 - [ ] **Step 5: Commit**
 
@@ -606,7 +606,7 @@ Add an `__init__.py`? No: pytest with rootdir at repo root imports `cloud.contai
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd "/Users/siraj/fixed layout pdf to epub" && .venv/bin/python -m pytest -q tests/container/` — expect import error (module does not exist).
+Run: `cd "/Users/siraj/fixed layout pdf to epub" && .venv/bin/python -m pytest -q tests/container/`: expect import error (module does not exist).
 
 - [ ] **Step 3: Implement**
 
@@ -654,7 +654,7 @@ pymupdf
 
 - [ ] **Step 4: Run to verify pass**
 
-Run: `.venv/bin/python -m pytest -q tests/container/` — 3 passed. Then the engine fast suite still passes: `.venv/bin/python -m pytest -q -m 'not slow'` — expect 85 passed total or engine 82 + container 3 depending on collection; report the numbers.
+Run: `.venv/bin/python -m pytest -q tests/container/`: 3 passed. Then the engine fast suite still passes: `.venv/bin/python -m pytest -q -m 'not slow'`: expect 85 passed total or engine 82 + container 3 depending on collection; report the numbers.
 
 - [ ] **Step 5: Commit**
 
@@ -780,11 +780,11 @@ Add to `cloud/worker/wrangler.jsonc`:
   ],
 ```
 
-Verify the field names against the installed schema before committing: `python3 -c "import json; s=json.load(open('node_modules/wrangler/config-schema.json')); print('image_build_context' in json.dumps(s))"` — if the field is named differently (for example `build_context`), use the schema's name and note it in your report.
+Verify the field names against the installed schema before committing: `python3 -c "import json; s=json.load(open('node_modules/wrangler/config-schema.json')); print('image_build_context' in json.dumps(s))"`: if the field is named differently (for example `build_context`), use the schema's name and note it in your report.
 
 - [ ] **Step 4: Confirm the test suite still runs**
 
-Run: `npx vitest run`. Containers in miniflare need Docker; if the suite now fails to START because of the containers config (not because of a real test regression), report the exact error and stop — the controller will decide between requiring Docker for tests or splitting deploy-only config. If the suite passes (61 tests), continue.
+Run: `npx vitest run`. Containers in miniflare need Docker; if the suite now fails to START because of the containers config (not because of a real test regression), report the exact error and stop: the controller will decide between requiring Docker for tests or splitting deploy-only config. If the suite passes (61 tests), continue.
 
 - [ ] **Step 5: Commit**
 
@@ -795,7 +795,7 @@ git commit -m "feat(saas): OcrEngine container binding via durable object"
 
 ---
 
-### Task 8: Start route — prepare, price, hold
+### Task 8: Start route: prepare, price, hold
 
 **Files:**
 - Create: `cloud/worker/src/start.ts`
@@ -889,7 +889,7 @@ describe("startJob", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure** — cannot resolve `../src/start`.
+- [ ] **Step 2: Run to verify failure**: cannot resolve `../src/start`.
 
 - [ ] **Step 3: Implement**
 
@@ -1002,7 +1002,7 @@ jobs.post("/:id/start", async (c) => {
 
 (Note `getByName` per the containers docs; if the installed @cloudflare/containers version exposes a different accessor, follow the package README and note the deviation.)
 
-- [ ] **Step 4: Run to verify pass** — full suite 67 passed (61 + 6). `npx tsc --noEmit` clean.
+- [ ] **Step 4: Run to verify pass**: full suite 67 passed (61 + 6). `npx tsc --noEmit` clean.
 
 - [ ] **Step 5: Commit**
 
@@ -1019,7 +1019,7 @@ Invoke the `wrangler` skill first. All commands from `cloud/worker/`. Docker mus
 
 - [ ] **Step 1: Deploy**
 
-Run: `npx wrangler deploy` — expect the container image to build and push (first time is slow), then the Worker deploy with DB, STORE, ASSETS, OCR_ENGINE bindings listed. Containers take a few minutes to provision after first deploy.
+Run: `npx wrangler deploy`: expect the container image to build and push (first time is slow), then the Worker deploy with DB, STORE, ASSETS, OCR_ENGINE bindings listed. Containers take a few minutes to provision after first deploy.
 
 - [ ] **Step 2: Verify unauthenticated surfaces**
 
@@ -1032,11 +1032,11 @@ curl -s "$BASE/api/nope"                         # {"error":"not found"}
 
 - [ ] **Step 3: Verify the container provisioned**
 
-Run: `npx wrangler containers list` — expect OcrEngine listed. Then `npx wrangler tail --format pretty` in the background is optional for debugging; do not leave it running.
+Run: `npx wrangler containers list`: expect OcrEngine listed. Then `npx wrangler tail --format pretty` in the background is optional for debugging; do not leave it running.
 
 - [ ] **Step 4: State the auth-gated gap honestly**
 
-Full end-to-end (upload -> start -> hold visible in the admin statement) needs a real Firebase ID token, which needs FIREBASE_PROJECT_ID configured — still blocked on Adnan running `firebase login --reauth`. Record in the report: what was verified live (health, 401 gates, 404 envelope, container provisioned) and what remains gated (authenticated upload/start against production).
+Full end-to-end (upload -> start -> hold visible in the admin statement) needs a real Firebase ID token, which needs FIREBASE_PROJECT_ID configured: still blocked on Adnan running `firebase login --reauth`. Record in the report: what was verified live (health, 401 gates, 404 envelope, container provisioned) and what remains gated (authenticated upload/start against production).
 
 - [ ] **Step 5: Run everything once more and commit any config drift**
 
