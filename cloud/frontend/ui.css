@@ -15,6 +15,7 @@
   --cream:#FCF7F1; --page:#FCFCFA; --card:#FFFFFF;
   --tile:#F4EFE8;  --badge:#EFEEEA;
   --line:#C9C2BA;  --line2:#E3DDD5; --body:#6F665E;
+  --brick:#A14D33; /* warm terracotta: failure states, still on the brown axis */
 
   --serif:'Cormorant Garamond',Georgia,serif;
   --sans:'Teachers','Trebuchet MS',Calibri,sans-serif;
@@ -104,6 +105,7 @@ input{font:inherit}
   min-height:48px; padding:11px 20px;
   border-radius:var(--r-md); border:1px solid transparent;
   font-family:var(--sans); font-weight:600; font-size:15px; letter-spacing:.01em;
+  white-space:nowrap;
   transition:background .2s var(--ease), border-color .2s var(--ease),
              box-shadow .2s var(--ease), color .2s var(--ease);
 }
@@ -210,11 +212,12 @@ input{font:inherit}
 }
 
 /* ============================================================================
-   App view (styled fully in the next task; kept presentable here)
+   App view: the signed in study. Same warm editorial language as the door.
    ========================================================================== */
 .app__bar{
-  display:flex; align-items:center; gap:16px;
-  height:68px; padding:0 clamp(18px,4vw,56px);
+  position:sticky; top:0; z-index:10;
+  display:flex; align-items:center; gap:14px;
+  height:68px; padding:0 clamp(16px,4vw,56px);
   background:rgba(252,252,250,.82);
   backdrop-filter:saturate(1.1) blur(14px);
   -webkit-backdrop-filter:saturate(1.1) blur(14px);
@@ -222,10 +225,227 @@ input{font:inherit}
 }
 .app__logo{height:32px; width:auto; display:block}
 .app__spacer{flex:1}
-.app__email{font-size:13.5px; color:var(--brown2)}
+.app__account{display:flex; align-items:center; gap:14px; min-width:0}
+.app__email{
+  font-size:13.5px; color:var(--brown2);
+  max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.app__admin{
+  font-weight:600; font-size:13.5px; color:var(--brown);
+  text-decoration:none; border-bottom:1px solid var(--gold); padding-bottom:2px;
+  transition:color .2s var(--ease);
+}
+.app__admin:hover{color:var(--deep)}
 .btn--ghost{
   min-height:44px; padding:9px 16px;
   background:transparent; color:var(--brown); border-color:var(--line);
 }
 .btn--ghost:hover{border-color:var(--gold); color:var(--deep)}
-.app__main{max-width:var(--maxw); margin:0 auto; padding:28px clamp(18px,4vw,56px)}
+
+.balance{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--card); border:1px solid var(--line); border-radius:999px;
+  padding:7px 14px 6px; line-height:1;
+  font-weight:700; font-size:13px; letter-spacing:.02em; color:var(--brown2);
+  white-space:nowrap;
+}
+.balance__dot{width:8px; height:8px; border-radius:50%; background:var(--gold); flex:0 0 auto}
+
+/* ---- layout ---------------------------------------------------------------*/
+.app__main{
+  max-width:1200px; margin:0 auto;
+  padding:clamp(24px,4vw,44px) clamp(16px,4vw,56px) 80px;
+}
+.app__grid{
+  display:grid; grid-template-columns:minmax(320px,392px) 1fr;
+  gap:clamp(24px,3.2vw,44px); align-items:start;
+}
+
+/* ---- panels ---------------------------------------------------------------*/
+.panel{
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-md);
+  padding:clamp(20px,2.6vw,28px);
+}
+.panel__title{
+  font-family:var(--serif); font-weight:600; font-size:25px; line-height:1.15;
+  letter-spacing:-.005em; color:var(--deep);
+}
+.panel__sub{margin:7px 0 20px; font-size:14px; line-height:1.55; color:var(--body)}
+
+/* ---- upload: drop zone ----------------------------------------------------*/
+.dropzone{
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:26px 18px 24px; text-align:center;
+  border:1.5px dashed var(--line); border-radius:var(--r-md);
+  background:var(--page); cursor:pointer;
+  transition:border-color .2s var(--ease), background .2s var(--ease),
+             box-shadow .2s var(--ease);
+}
+.dropzone:hover{border-color:var(--gold); background:var(--cream)}
+.dropzone:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.dropzone.is-drag{
+  border-color:var(--gold); background:var(--cream);
+  box-shadow:0 0 0 3px rgba(184,149,106,.18);
+}
+.dropzone.has-file{border-style:solid; border-color:var(--gold); background:var(--cream)}
+.dropzone__icon{color:var(--gold)}
+.dropzone__line{font-size:14.5px; line-height:1.5; color:var(--body)}
+.dropzone__line strong{color:var(--brown2); font-weight:600}
+.dropzone__file{
+  font-weight:600; font-size:14px; color:var(--brown2);
+  overflow-wrap:anywhere; line-height:1.45;
+}
+
+/* ---- upload: fields and toggles -------------------------------------------*/
+.upload__field{margin-top:20px; display:flex; flex-direction:column; gap:8px}
+
+.modes{border:0; padding:0; margin:20px 0 0; min-width:0}
+.modes legend{padding:0; margin-bottom:8px}
+.mode, .express{
+  position:relative;
+  display:flex; align-items:flex-start; gap:12px;
+  padding:13px 14px; cursor:pointer;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-md);
+  transition:border-color .2s var(--ease), background .2s var(--ease);
+}
+.mode + .mode{margin-top:8px}
+.express{margin-top:10px}
+.mode:hover, .express:hover{border-color:var(--gold)}
+.mode input, .express input{
+  position:absolute; width:1px; height:1px; margin:-1px;
+  clip-path:inset(50%); overflow:hidden; white-space:nowrap;
+}
+.mode:has(input:checked){border-color:var(--brown); background:var(--cream)}
+.express:has(input:checked){border-color:var(--gold); background:var(--cream)}
+.mode:has(input:focus-visible), .express:has(input:focus-visible){
+  outline:2px solid var(--gold); outline-offset:2px;
+}
+.mode__dot{
+  position:relative; flex:0 0 auto; width:18px; height:18px; margin-top:2px;
+  border:1.5px solid var(--line); border-radius:50%; background:var(--card);
+  transition:border-color .2s var(--ease);
+}
+.mode__dot::after{
+  content:""; position:absolute; inset:3px; border-radius:50%;
+  background:var(--brown); opacity:0; transform:scale(.5);
+  transition:opacity .18s var(--ease), transform .18s var(--ease);
+}
+.mode:has(input:checked) .mode__dot{border-color:var(--brown)}
+.mode:has(input:checked) .mode__dot::after{opacity:1; transform:none}
+.express__box{
+  display:inline-flex; align-items:center; justify-content:center;
+  flex:0 0 auto; width:18px; height:18px; margin-top:2px;
+  border:1.5px solid var(--line); border-radius:5px;
+  background:var(--card); color:var(--cream);
+  transition:background .18s var(--ease), border-color .18s var(--ease);
+}
+.express__box svg{opacity:0; transition:opacity .18s var(--ease)}
+.express:has(input:checked) .express__box{background:var(--brown); border-color:var(--brown)}
+.express:has(input:checked) .express__box svg{opacity:1}
+.mode__text{min-width:0}
+.mode__name{display:block; font-weight:600; font-size:15px; color:var(--deep); line-height:1.3}
+.mode__price{display:block; margin-top:1px; font-size:12.5px; color:var(--body)}
+
+.upload__actions{margin-top:22px}
+.upload__actions .btn--primary{width:100%}
+.upload__rate{margin-top:12px; text-align:center; font-size:13px; line-height:1.5; color:var(--body)}
+.upload__rate strong{color:var(--brown); font-weight:700}
+
+.upload-status{
+  margin-top:16px; padding:13px 16px;
+  background:var(--cream); border-left:2px solid var(--gold);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  color:var(--brown2); font-size:14px; line-height:1.55;
+}
+.upload-status--error{border-left-color:var(--brick); color:var(--brick)}
+
+/* ---- jobs list ------------------------------------------------------------*/
+.jobs{min-width:0}
+.jobs__head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:14px;
+  margin:2px 0 16px;
+}
+.jobs__count{
+  font-weight:700; font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--gold); white-space:nowrap;
+}
+.jobs__list{display:flex; flex-direction:column; gap:12px}
+
+.job{
+  display:flex; align-items:center; gap:16px;
+  padding:16px 18px;
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-md);
+  box-shadow:var(--shadow-sm);
+}
+.job__main{flex:1; min-width:0}
+.job__titlerow{display:flex; align-items:center; gap:10px; min-width:0}
+.job__title{
+  font-family:var(--serif); font-weight:600; font-size:19px; line-height:1.25;
+  color:var(--deep);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.job__express{
+  flex:0 0 auto;
+  font-weight:700; font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--gold); border:1px solid rgba(184,149,106,.5); border-radius:999px;
+  padding:3px 8px 2px; line-height:1;
+}
+.job__meta{margin-top:3px; font-size:13px; color:var(--body)}
+.job__error{margin-top:5px; font-size:13px; line-height:1.5; color:var(--brick)}
+
+.status{
+  flex:0 0 auto;
+  display:inline-flex; align-items:center; gap:7px;
+  padding:6px 12px 5px; line-height:1.2;
+  border:1px solid var(--line2); border-radius:999px; background:var(--page);
+  font-weight:700; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--brown2); white-space:nowrap;
+}
+.status__dot{width:7px; height:7px; border-radius:50%; background:var(--line); flex:0 0 auto}
+.status--ready{border-color:rgba(184,149,106,.55); color:var(--brown)}
+.status--ready .status__dot{background:var(--gold)}
+.status--active .status__dot{background:var(--gold); animation:breathe 1.8s var(--ease) infinite}
+.status--failed{border-color:rgba(161,77,51,.35); color:var(--brick)}
+.status--failed .status__dot{background:var(--brick)}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){
+  .status--active .status__dot{animation:none}
+}
+
+/* ---- empty state ----------------------------------------------------------*/
+.empty{
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:clamp(40px,7vw,72px) 26px; text-align:center;
+  border:1.5px dashed var(--line); border-radius:var(--r-lg);
+  background:linear-gradient(180deg, var(--cream), var(--page));
+}
+.empty__icon{color:var(--gold); margin-bottom:10px}
+.empty__title{
+  font-family:var(--serif); font-weight:600; font-size:24px; color:var(--deep);
+  line-height:1.2;
+}
+.empty__body{max-width:26em; margin-top:8px; font-size:14.5px; line-height:1.6; color:var(--body)}
+
+/* ---- app responsive -------------------------------------------------------*/
+@media (max-width:959px){
+  .app__grid{grid-template-columns:1fr; max-width:37em; margin:0 auto}
+}
+@media (max-width:639px){
+  .app__email{display:none}
+  .job{flex-direction:column; align-items:stretch; gap:10px}
+  .job__title{white-space:normal}
+  .status{align-self:flex-start}
+}
+/* Narrow phones: the bar becomes two calm rows, logo and sign out up top,
+   admin link and balance underneath. */
+@media (max-width:479px){
+  .app__bar{
+    flex-wrap:wrap; height:auto; gap:10px 14px;
+    padding-top:12px; padding-bottom:12px;
+  }
+  .app__spacer{display:none}
+  .app__logo{height:28px}
+  #sign-out-button{margin-left:auto}
+  .app__account{order:9; flex-basis:100%}
+}

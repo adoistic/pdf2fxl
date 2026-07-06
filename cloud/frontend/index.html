@@ -96,10 +96,97 @@
     <header class="app__bar">
       <img class="app__logo" src="/thothica-logo.png" alt="Thothica">
       <span class="app__spacer"></span>
-      <span id="user-email" class="app__email"></span>
+      <nav class="app__account" aria-label="Account">
+        <a id="admin-link" class="app__admin" href="#admin" hidden>Admin</a>
+        <span id="balance-chip" class="balance" hidden>
+          <span class="balance__dot" aria-hidden="true"></span>
+          <span id="balance-amount"></span>
+        </span>
+        <span id="user-email" class="app__email"></span>
+      </nav>
       <button id="sign-out-button" class="btn btn--ghost" type="button">Sign out</button>
     </header>
-    <main id="app-main" class="app__main"></main>
+
+    <main id="app-main" class="app__main">
+      <div class="app__grid">
+
+        <section class="panel panel--upload reveal d1" aria-labelledby="upload-heading">
+          <h2 id="upload-heading" class="panel__title">Start a new edition</h2>
+          <p class="panel__sub">Upload a scanned PDF and choose how you want it back.</p>
+
+          <div id="drop-zone" class="dropzone" role="button" tabindex="0"
+               aria-label="Choose a PDF, or drop one here">
+            <svg class="dropzone__icon" viewBox="0 0 24 24" width="28" height="28" fill="none"
+                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true" focusable="false">
+              <path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5L14 3z"/>
+              <path d="M14 3v4.5h4.5"/>
+              <path d="M12 16.5v-5"/>
+              <path d="M9.75 13.75 12 11.5l2.25 2.25"/>
+            </svg>
+            <p class="dropzone__line" id="drop-zone-line"><strong>Drop your PDF here</strong>, or browse for it</p>
+            <p class="dropzone__file" id="drop-zone-file" hidden></p>
+            <input id="file-input" type="file" accept="application/pdf,.pdf" hidden>
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="job-title">Title</label>
+            <input id="job-title" class="field" type="text" maxlength="200"
+                   placeholder="What should we call this book?" autocomplete="off">
+          </div>
+
+          <fieldset class="modes">
+            <legend class="field-label">Edition</legend>
+            <label class="mode">
+              <input type="radio" name="job-mode" value="reflow" checked>
+              <span class="mode__dot" aria-hidden="true"></span>
+              <span class="mode__text">
+                <span class="mode__name">Reflowable edition</span>
+                <span class="mode__price">0.7 credits per page</span>
+              </span>
+            </label>
+            <label class="mode">
+              <input type="radio" name="job-mode" value="fixed">
+              <span class="mode__dot" aria-hidden="true"></span>
+              <span class="mode__text">
+                <span class="mode__name">Fixed layout edition</span>
+                <span class="mode__price">3.0 credits per page</span>
+              </span>
+            </label>
+          </fieldset>
+
+          <label class="express">
+            <input id="express-toggle" type="checkbox">
+            <span class="express__box" aria-hidden="true">
+              <svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="M2 6.2 4.8 9 10 3.4"/>
+              </svg>
+            </span>
+            <span class="mode__text">
+              <span class="mode__name">Express</span>
+              <span class="mode__price">+0.2 per page, skips the queue</span>
+            </span>
+          </label>
+
+          <div class="upload__actions">
+            <button id="upload-button" class="btn btn--primary" type="button">Create my edition</button>
+            <p class="upload__rate">You'll pay <strong id="rate-per-page">0.7</strong> credits per page, held when the scan starts.</p>
+          </div>
+
+          <p id="upload-status" class="upload-status" role="status" hidden></p>
+        </section>
+
+        <section class="jobs reveal d2" aria-labelledby="jobs-heading">
+          <div class="jobs__head">
+            <h2 id="jobs-heading" class="panel__title">Your editions</h2>
+            <span id="jobs-count" class="jobs__count" hidden></span>
+          </div>
+          <div id="jobs-list" class="jobs__list" aria-live="polite"></div>
+        </section>
+
+      </div>
+    </main>
   </section>
 
   <script type="module" src="/app.js"></script>
