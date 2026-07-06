@@ -31,6 +31,23 @@ const uploadStatus = document.getElementById("upload-status");
 const jobsList = document.getElementById("jobs-list");
 const jobsCount = document.getElementById("jobs-count");
 
+const adminView = document.getElementById("admin-view");
+const adminEmail = document.getElementById("admin-email");
+const adminBackLink = document.getElementById("admin-back-link");
+const adminSignOutButton = document.getElementById("admin-sign-out-button");
+const allocateEmail = document.getElementById("allocate-email");
+const allocateCredits = document.getElementById("allocate-credits");
+const allocateNote = document.getElementById("allocate-note");
+const allocateButton = document.getElementById("allocate-button");
+const allocateStatus = document.getElementById("allocate-status");
+const usersList = document.getElementById("users-list");
+const usersCount = document.getElementById("users-count");
+const ledgerDrawer = document.getElementById("ledger-drawer");
+const ledgerTitle = document.getElementById("ledger-title");
+const ledgerSub = document.getElementById("ledger-sub");
+const ledgerBody = document.getElementById("ledger-body");
+const ledgerClose = document.getElementById("ledger-close");
+
 // Per page prices, in credits. Keep in sync with cloud/worker/src/ledger.ts.
 const RATES = { reflow: 0.7, fixed: 3.0, express: 0.2 };
 
@@ -46,6 +63,15 @@ const STATUS_LABELS = {
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 const MODE_LABELS = { reflow: "Reflowable edition", fixed: "Fixed layout edition" };
 const POLL_MS = 10_000;
+
+// Ledger kinds rendered as friendly words. See cloud/worker/src/ledger.ts.
+const LEDGER_KIND_LABELS = {
+  allocation: "Allocation",
+  hold: "Hold",
+  capture: "Charge",
+  release: "Refund",
+};
+const MCR_PER_CREDIT = 1000;
 
 // ---------------------------------------------------------------------------
 // Preview fixtures. `?preview-fixtures` (or `?preview-fixtures=empty`) renders
@@ -79,18 +105,69 @@ const FIXTURE_JOBS = [
   { id: "fx-7", mode: "reflow", express: false, status: "failed", title: "Field notebook, 1911", pageCount: null, error: "we could not read this file", createdAt: agoIso(3 * 24 * 60 * 60 * 1000) },
 ];
 
+const FIXTURE_USERS = [
+  { id: 7, email: "adnan@thothica.com", name: "Adnan", isAdmin: true, balance: 1280.0 },
+  { id: 6, email: "reader@example.com", name: "Preview Reader", isAdmin: false, balance: 42.7 },
+  { id: 5, email: "amina.karim@example.com", name: "Amina Karim", isAdmin: false, balance: 318.5 },
+  { id: 4, email: "j.okafor@example.com", name: null, isAdmin: false, balance: 0.0 },
+  { id: 3, email: "editorial@heritagepress.example", name: "Heritage Press", isAdmin: false, balance: -6.3 },
+  { id: 2, email: "student.aziz@example.edu", name: "Aziz R.", isAdmin: false, balance: 4.2 },
+];
+
+// Newest first, as the ledger API returns it. Amounts are milli-credits.
+const FIXTURE_LEDGER = [
+  { kind: "capture", amountMcr: 0, jobId: "a1b2c3d4e5f6", refId: 41, note: null, createdBy: null, createdAt: agoIso(20 * 60 * 1000) },
+  { kind: "hold", amountMcr: -149800, jobId: "a1b2c3d4e5f6", refId: null, note: null, createdBy: null, createdAt: agoIso(22 * 60 * 1000) },
+  { kind: "release", amountMcr: 67200, jobId: "9f8e7d6c5b4a", refId: 38, note: null, createdBy: null, createdAt: agoIso(6 * 60 * 60 * 1000) },
+  { kind: "hold", amountMcr: -67200, jobId: "9f8e7d6c5b4a", refId: null, note: null, createdBy: null, createdAt: agoIso(6 * 60 * 60 * 1000 + 90 * 1000) },
+  { kind: "allocation", amountMcr: 250000, jobId: null, refId: null, note: "welcome credits", createdBy: "adnan@thothica.com", createdAt: agoIso(2 * 24 * 60 * 60 * 1000) },
+  { kind: "allocation", amountMcr: 100000, jobId: null, refId: null, note: null, createdBy: "adnan@thothica.com", createdAt: agoIso(9 * 24 * 60 * 60 * 1000) },
+  { kind: "allocation", amountMcr: -15000, jobId: null, refId: null, note: "double charge correction", createdBy: "adnan@thothica.com", createdAt: agoIso(11 * 24 * 60 * 60 * 1000) },
+];
+
 // ---------------------------------------------------------------------------
 // View switching
 // ---------------------------------------------------------------------------
+// True once a signed in (or fixture) session exists. Gates the #admin route so
+// the hash cannot flip to the admin view before we know the user, and gates it
+// on isAdmin so the link and section never render for non admins. The server
+// enforces 403 regardless; this is only about not showing what is not theirs.
+let sessionReady = false;
+let sessionIsAdmin = false;
+
 function showLogin() {
   loginView.hidden = false;
   appView.hidden = true;
+  adminView.hidden = true;
   stopPolling();
 }
 
 function showApp() {
   loginView.hidden = true;
+  adminView.hidden = true;
   appView.hidden = false;
+}
+
+function showAdmin() {
+  loginView.hidden = true;
+  appView.hidden = true;
+  adminView.hidden = false;
+}
+
+// Routes the current hash to a view. Only #admin, and only for admins with a
+// live session, reaches the admin view; everything else falls back to the app.
+function routeHash() {
+  if (!sessionReady) return;
+  if (location.hash === "#admin" && sessionIsAdmin) {
+    showAdmin();
+    loadAdminData();
+  } else {
+    if (location.hash === "#admin") {
+      // non admin (or stale hash): drop it so the app view is clean
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+    showApp();
+  }
 }
 
 // Attaches the current user's Firebase ID token as a Bearer token, parses the
@@ -138,9 +215,11 @@ function renderMe(me) {
   currentBalance = me.balance;
   balanceAmount.textContent = `${me.balance.toFixed(1)} credits`;
   balanceChip.hidden = false;
+  sessionIsAdmin = !!me.isAdmin;
   adminLink.hidden = !me.isAdmin;
   if (me.email) {
     userEmail.textContent = me.email;
+    adminEmail.textContent = me.email;
   }
 }
 
@@ -294,15 +373,248 @@ async function refreshJobs() {
   renderJobs(data.jobs || []);
 }
 
-// ---------------------------------------------------------------------------
-// Upload panel
-// ---------------------------------------------------------------------------
-let selectedFile = null;
-
 function sentence(text) {
   if (!text) return "";
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+// ---------------------------------------------------------------------------
+// Admin: readers table, allocation, and per reader statement drawer
+// ---------------------------------------------------------------------------
+function formatBalance(credits) {
+  // Match the balance chip: one decimal, warm and plain.
+  return credits.toFixed(1);
+}
+
+function renderUsers(users) {
+  usersList.replaceChildren();
+  if (users.length === 0) {
+    usersCount.hidden = true;
+    usersList.appendChild(el("div", "users__empty", "No readers yet."));
+    return;
+  }
+  usersCount.hidden = false;
+  usersCount.textContent = users.length === 1 ? "1 reader" : `${users.length} readers`;
+
+  for (const user of users) {
+    const row = el("button", "urow");
+    row.type = "button";
+    row.setAttribute("role", "row");
+    row.addEventListener("click", () => openLedger(user));
+
+    const who = el("div", "urow__who");
+    const emailWrap = el("div", "urow__email");
+    emailWrap.appendChild(el("span", "urow__emailtext", user.email));
+    if (user.isAdmin) {
+      emailWrap.appendChild(el("span", "urow__badge", "Admin"));
+    }
+    who.appendChild(emailWrap);
+    row.appendChild(who);
+
+    const name = user.name
+      ? el("div", "urow__name", user.name)
+      : el("div", "urow__name urow__name--empty", "no name");
+    row.appendChild(name);
+
+    const bal = el("div", "urow__bal");
+    if (user.balance < 0) bal.classList.add("urow__bal--neg");
+    bal.appendChild(el("span", "users__label", "Balance"));
+    bal.appendChild(document.createTextNode(formatBalance(user.balance)));
+    bal.appendChild(el("span", "urow__bal-unit", "credits"));
+    row.appendChild(bal);
+
+    usersList.appendChild(row);
+  }
+}
+
+async function refreshUsers() {
+  if (previewFixtures) {
+    renderUsers(FIXTURE_USERS);
+    return;
+  }
+  const data = await api("/api/admin/users");
+  renderUsers(data.users || []);
+}
+
+// Loaded on entry to the admin view. Only fetches once per visit unless the
+// allocation form forces a refresh; keeps the panel calm and cheap.
+async function loadAdminData() {
+  try {
+    await refreshUsers();
+  } catch (err) {
+    console.error("failed to load readers", err);
+    usersList.replaceChildren(
+      el("div", "users__empty", "We could not load the readers. Try again in a moment.")
+    );
+  }
+}
+
+function showAllocateStatus(message, kind) {
+  allocateStatus.textContent = message;
+  allocateStatus.classList.toggle("upload-status--error", kind === "error");
+  allocateStatus.hidden = false;
+}
+
+async function submitAllocation() {
+  const email = allocateEmail.value.trim().toLowerCase();
+  const creditsRaw = allocateCredits.value.trim();
+  const credits = Number(creditsRaw);
+  const note = allocateNote.value.trim();
+
+  if (!email.includes("@")) {
+    showAllocateStatus("Enter the reader's email address.", "error");
+    return;
+  }
+  if (!creditsRaw || !Number.isFinite(credits) || credits === 0) {
+    showAllocateStatus("Enter a non zero number of credits.", "error");
+    return;
+  }
+
+  allocateButton.disabled = true;
+  const restLabel = allocateButton.textContent;
+  allocateButton.textContent = "Allocating...";
+
+  try {
+    const result = await api("/api/admin/credits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, credits, note: note || null }),
+    });
+    const amount = Math.abs(credits);
+    const verb = credits < 0 ? "Took back" : "Allocated";
+    const unit = amount === 1 ? "credit" : "credits";
+    showAllocateStatus(
+      `${verb} ${String(amount)} ${unit} ${credits < 0 ? "from" : "to"} ${result.email}. ` +
+        `New balance ${formatBalance(result.balance)}.`
+    );
+    allocateEmail.value = "";
+    allocateCredits.value = "";
+    allocateNote.value = "";
+    await refreshUsers();
+  } catch (err) {
+    // 400 arrives here with the server's envelope ("invalid request").
+    const msg =
+      err.status === 400
+        ? "That allocation was not valid. Check the email and amount."
+        : `${sentence(err.message)}.`;
+    showAllocateStatus(msg, "error");
+  } finally {
+    allocateButton.disabled = false;
+    allocateButton.textContent = restLabel;
+  }
+}
+
+// ---- statement drawer ------------------------------------------------------
+let lastFocusedRow = null;
+
+function renderLedgerEntry(entry) {
+  const item = el("div", "ledger__entry");
+
+  item.appendChild(el("span", "ledger__kind", LEDGER_KIND_LABELS[entry.kind] || entry.kind));
+
+  const credits = entry.amountMcr / MCR_PER_CREDIT;
+  const amount = el("span", "ledger__amount");
+  if (credits > 0) {
+    amount.classList.add("ledger__amount--pos");
+    amount.textContent = `+${formatBalance(credits)}`;
+  } else if (credits < 0) {
+    amount.classList.add("ledger__amount--neg");
+    amount.textContent = formatBalance(credits);
+  } else {
+    amount.classList.add("ledger__amount--zero");
+    amount.textContent = "0.0";
+  }
+  item.appendChild(amount);
+
+  const meta = el("div", "ledger__meta");
+  const parts = [];
+  if (entry.note) parts.push(el("span", "ledger__note", entry.note));
+  if (entry.jobId) parts.push(el("span", "ledger__job", `job ${entry.jobId.slice(0, 8)}`));
+  const when = timeAgo(entry.createdAt);
+  if (when) parts.push(el("span", "ledger__when", when));
+  if (entry.createdBy) parts.push(el("span", "ledger__who", `by ${entry.createdBy}`));
+
+  parts.forEach((part, i) => {
+    if (i > 0) meta.appendChild(el("span", "ledger__dot", "·"));
+    meta.appendChild(part);
+  });
+  item.appendChild(meta);
+
+  return item;
+}
+
+function renderLedger(entries) {
+  ledgerBody.replaceChildren();
+  if (entries.length === 0) {
+    ledgerBody.appendChild(el("div", "ledger__empty", "No credit activity yet."));
+    return;
+  }
+  const list = el("div", "ledger");
+  for (const entry of entries) {
+    list.appendChild(renderLedgerEntry(entry));
+  }
+  ledgerBody.appendChild(list);
+}
+
+async function openLedger(user) {
+  lastFocusedRow = document.activeElement;
+  ledgerTitle.textContent = "Statement";
+  ledgerSub.textContent = user.email;
+  ledgerBody.replaceChildren(el("div", "ledger__empty", "Loading..."));
+  ledgerDrawer.hidden = false;
+  document.body.style.overflow = "hidden";
+  ledgerClose.focus();
+
+  try {
+    const data = previewFixtures
+      ? { entries: FIXTURE_LEDGER }
+      : await api(`/api/admin/users/${user.id}/ledger`);
+    renderLedger(data.entries || []);
+  } catch (err) {
+    console.error("failed to load statement", err);
+    ledgerBody.replaceChildren(
+      el("div", "ledger__empty", "We could not load this statement. Try again in a moment.")
+    );
+  }
+}
+
+function closeLedger() {
+  ledgerDrawer.hidden = true;
+  document.body.style.overflow = "";
+  if (lastFocusedRow && typeof lastFocusedRow.focus === "function") {
+    lastFocusedRow.focus();
+  }
+}
+
+function wireAdminPanel() {
+  allocateButton.addEventListener("click", () => {
+    submitAllocation().catch((err) => console.error("allocation failed", err));
+  });
+  allocateNote.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitAllocation().catch((err) => console.error("allocation failed", err));
+    }
+  });
+
+  adminBackLink.addEventListener("click", (event) => {
+    event.preventDefault();
+    history.replaceState(null, "", location.pathname + location.search);
+    showApp();
+  });
+
+  ledgerDrawer.addEventListener("click", (event) => {
+    if (event.target.closest("[data-drawer-close]")) closeLedger();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !ledgerDrawer.hidden) closeLedger();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Upload panel
+// ---------------------------------------------------------------------------
+let selectedFile = null;
 
 function formatSize(bytes) {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -484,13 +796,27 @@ function wireLoginActions() {
 async function boot() {
   wireLoginActions();
   wireUploadPanel();
+  wireAdminPanel();
+
+  // Hash routing lives across every signed in view; only #admin (and only for
+  // admins) reaches the admin view.
+  window.addEventListener("hashchange", routeHash);
 
   if (previewFixtures) {
     // Visual pass only: canned data, no auth, no polling. See the note above.
+    // `?preview-fixtures=admin` opens straight on the admin view; the plain
+    // flag stays on the app shell as before, and `=empty` shows the empty jobs
+    // list. Everything is fixture data; no real API is ever hit.
     renderMe(FIXTURE_ME);
     userEmail.textContent = FIXTURE_ME.email;
     renderJobs(location.search.includes("preview-fixtures=empty") ? [] : FIXTURE_JOBS);
-    showApp();
+    sessionReady = true;
+    if (location.search.includes("preview-fixtures=admin")) {
+      renderUsers(FIXTURE_USERS);
+      showAdmin();
+    } else {
+      showApp();
+    }
     return;
   }
 
@@ -506,8 +832,15 @@ async function boot() {
         userEmail.textContent = user.email || "";
       }
       showApp();
-      loadAppData();
+      loadAppData().then(() => {
+        // Now that we know whether the user is an admin, honour a deep link to
+        // #admin (or drop it if they are not an admin).
+        sessionReady = true;
+        routeHash();
+      });
     } else {
+      sessionReady = false;
+      sessionIsAdmin = false;
       showLogin();
     }
   });

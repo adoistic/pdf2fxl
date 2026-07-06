@@ -449,3 +449,200 @@ input{font:inherit}
   #sign-out-button{margin-left:auto}
   .app__account{order:9; flex-basis:100%}
 }
+
+/* ============================================================================
+   Admin view: readers, allocation, and per reader statements.
+   Reuses the app language; the users table degrades to stacked cards <720px.
+   ========================================================================== */
+.app__admin-tag{
+  font-family:var(--sans); font-weight:700; font-size:10.5px;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--brown2);
+  border:1px solid var(--line); border-radius:999px;
+  padding:5px 11px 4px; line-height:1; background:var(--card);
+}
+
+.admin__grid{
+  display:grid; grid-template-columns:minmax(320px,392px) 1fr;
+  gap:clamp(24px,3.2vw,44px); align-items:start;
+}
+
+.field-hint{margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--body)}
+.field-optional{
+  font-weight:400; letter-spacing:.02em; text-transform:none;
+  color:var(--body); font-size:11px;
+}
+
+/* ---- readers table --------------------------------------------------------*/
+.users{min-width:0}
+.users__table{
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-md); overflow:hidden;
+}
+.users__thead{
+  display:grid; grid-template-columns:1fr 1fr auto;
+  gap:16px; align-items:baseline;
+  padding:14px clamp(16px,2.4vw,22px);
+  border-bottom:1px solid var(--line2); background:var(--cream);
+}
+.users__thead span{
+  font-weight:700; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--brown2);
+}
+.users__balcol{text-align:right}
+.users__body{display:flex; flex-direction:column}
+
+.urow{
+  display:grid; grid-template-columns:1fr 1fr auto;
+  gap:16px; align-items:center;
+  width:100%; text-align:left;
+  padding:15px clamp(16px,2.4vw,22px);
+  background:transparent; border:0; border-top:1px solid var(--line2);
+  cursor:pointer;
+  transition:background .18s var(--ease);
+}
+.users__body .urow:first-child{border-top:0}
+.urow:hover{background:var(--cream)}
+.urow:focus-visible{outline:2px solid var(--gold); outline-offset:-2px}
+
+.urow__who{min-width:0}
+.urow__email{
+  display:flex; align-items:center; gap:8px; min-width:0;
+}
+.urow__emailtext{
+  font-weight:600; font-size:14.5px; color:var(--deep);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.urow__badge{
+  flex:0 0 auto;
+  font-weight:700; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--brown); border:1px solid rgba(184,149,106,.5); border-radius:999px;
+  padding:2px 7px 1px; line-height:1;
+}
+.urow__name{
+  font-size:13.5px; color:var(--body);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.urow__name--empty{font-style:italic; color:var(--line)}
+.urow__bal{
+  text-align:right; white-space:nowrap;
+  font-weight:700; font-size:14.5px; color:var(--brown2);
+  font-variant-numeric:tabular-nums;
+}
+.urow__bal-unit{font-weight:600; font-size:12px; color:var(--body); margin-left:4px}
+.urow__bal--neg{color:var(--brick)}
+
+.users__label{display:none}
+.users__empty{
+  padding:clamp(32px,5vw,52px) 26px; text-align:center;
+  font-size:14.5px; line-height:1.6; color:var(--body);
+}
+
+/* Under 720px the table header hides and each row becomes a stacked card. */
+@media (max-width:719px){
+  .admin__grid{grid-template-columns:1fr; max-width:37em; margin:0 auto}
+  .users__table{background:transparent; border:0; box-shadow:none; overflow:visible}
+  .users__thead{display:none}
+  .users__body{gap:12px}
+  .urow{
+    display:grid; grid-template-columns:auto auto;
+    justify-content:space-between; row-gap:6px; align-items:start;
+    padding:15px 18px;
+    background:var(--card); border:1px solid var(--line2); border-radius:var(--r-md);
+    box-shadow:var(--shadow-sm);
+  }
+  .users__body .urow:first-child{border-top:1px solid var(--line2)}
+  .urow:hover{background:var(--card)}
+  .urow__who{grid-column:1 / -1}
+  .urow__name--empty::before{content:""}
+  .urow__bal{grid-column:1 / -1; text-align:left; margin-top:2px}
+  .users__label{
+    display:inline; font-weight:700; font-size:10px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--gold); margin-right:8px;
+  }
+}
+
+/* ---- statement drawer -----------------------------------------------------*/
+.drawer{position:fixed; inset:0; z-index:40}
+.drawer__scrim{
+  position:absolute; inset:0;
+  background:rgba(79,52,25,.28);
+  backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px);
+  animation:scrim-in .25s var(--ease) forwards;
+}
+@keyframes scrim-in{from{opacity:0}to{opacity:1}}
+.drawer__panel{
+  position:absolute; top:0; right:0; bottom:0;
+  width:min(480px,100%);
+  display:flex; flex-direction:column;
+  background:var(--page); border-left:1px solid var(--line2);
+  box-shadow:var(--shadow-lg);
+  animation:drawer-in .3s var(--ease) forwards;
+}
+@keyframes drawer-in{from{transform:translateX(24px); opacity:.4}to{transform:none; opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .drawer__scrim,.drawer__panel{animation:none}
+}
+.drawer__head{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+  padding:22px clamp(20px,3vw,28px) 18px;
+  border-bottom:1px solid var(--line2);
+}
+.drawer__title{
+  font-family:var(--serif); font-weight:600; font-size:24px; line-height:1.15;
+  color:var(--deep);
+}
+.drawer__sub{
+  margin-top:4px; font-size:13.5px; color:var(--body);
+  overflow-wrap:anywhere;
+}
+.drawer__close{
+  flex:0 0 auto;
+  display:inline-flex; align-items:center; justify-content:center;
+  width:44px; height:44px; margin:-6px -8px 0 0;
+  border:1px solid var(--line); border-radius:999px;
+  background:var(--card); color:var(--brown2);
+  transition:border-color .2s var(--ease), color .2s var(--ease);
+}
+.drawer__close:hover{border-color:var(--gold); color:var(--deep)}
+.drawer__close:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.drawer__body{
+  flex:1; overflow-y:auto;
+  padding:8px clamp(20px,3vw,28px) 28px;
+}
+
+.ledger{display:flex; flex-direction:column}
+.ledger__entry{
+  display:grid; grid-template-columns:1fr auto;
+  gap:4px 16px; align-items:baseline;
+  padding:16px 0; border-bottom:1px solid var(--line2);
+}
+.ledger__entry:last-child{border-bottom:0}
+.ledger__kind{
+  font-family:var(--sans); font-weight:700; font-size:11px;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--brown2);
+}
+.ledger__amount{
+  text-align:right; white-space:nowrap;
+  font-weight:700; font-size:15px; color:var(--brown2);
+  font-variant-numeric:tabular-nums;
+}
+.ledger__amount--pos{color:var(--brown)}
+.ledger__amount--neg{color:var(--brick)}
+.ledger__amount--zero{color:var(--body)}
+.ledger__meta{
+  grid-column:1 / -1;
+  display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline;
+  font-size:13px; color:var(--body); line-height:1.5;
+}
+.ledger__note{color:var(--brown2)}
+.ledger__job{
+  font-weight:600; color:var(--brown);
+  font-variant-numeric:tabular-nums;
+}
+.ledger__dot{color:var(--line)}
+.ledger__when{white-space:nowrap}
+.ledger__who{white-space:nowrap}
+.ledger__empty{
+  padding:clamp(28px,6vw,44px) 4px; text-align:center;
+  font-size:14px; line-height:1.6; color:var(--body);
+}

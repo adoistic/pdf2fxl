@@ -189,6 +189,91 @@
     </main>
   </section>
 
+  <section id="admin-view" class="app admin" hidden>
+    <header class="app__bar">
+      <img class="app__logo" src="/thothica-logo.png" alt="Thothica">
+      <span class="app__admin-tag">Admin</span>
+      <span class="app__spacer"></span>
+      <nav class="app__account" aria-label="Account">
+        <a id="admin-back-link" class="app__admin" href="#">Back to editions</a>
+        <span id="admin-email" class="app__email"></span>
+      </nav>
+      <button id="admin-sign-out-button" class="btn btn--ghost" type="button">Sign out</button>
+    </header>
+
+    <main class="app__main">
+      <div class="admin__grid">
+
+        <section class="panel panel--allocate reveal d1" aria-labelledby="allocate-heading">
+          <h2 id="allocate-heading" class="panel__title">Allocate credits</h2>
+          <p class="panel__sub">Add credits to a reader, or subtract them to correct a mistake.</p>
+
+          <div class="upload__field">
+            <label class="field-label" for="allocate-email">Reader email</label>
+            <input id="allocate-email" class="field" type="email" placeholder="reader@example.com"
+                   autocomplete="off" inputmode="email" spellcheck="false">
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="allocate-credits">Credits</label>
+            <input id="allocate-credits" class="field" type="number" step="0.1"
+                   placeholder="e.g. 250" inputmode="decimal">
+            <p class="field-hint">Fractions are fine. A negative number takes credits back.</p>
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="allocate-note">Note <span class="field-optional">optional</span></label>
+            <input id="allocate-note" class="field" type="text" maxlength="200"
+                   placeholder="Why this adjustment?" autocomplete="off">
+          </div>
+
+          <div class="upload__actions">
+            <button id="allocate-button" class="btn btn--primary" type="button">Allocate credits</button>
+          </div>
+
+          <p id="allocate-status" class="upload-status" role="status" hidden></p>
+        </section>
+
+        <section class="users reveal d2" aria-labelledby="users-heading">
+          <div class="jobs__head">
+            <h2 id="users-heading" class="panel__title">Readers</h2>
+            <span id="users-count" class="jobs__count" hidden></span>
+          </div>
+
+          <div class="users__table" role="table" aria-label="Readers and balances">
+            <div class="users__thead" role="row">
+              <span role="columnheader">Reader</span>
+              <span role="columnheader">Name</span>
+              <span class="users__balcol" role="columnheader">Balance</span>
+            </div>
+            <div id="users-list" class="users__body" aria-live="polite"></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <div id="ledger-drawer" class="drawer" hidden>
+      <div class="drawer__scrim" data-drawer-close></div>
+      <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="ledger-title">
+        <header class="drawer__head">
+          <div class="drawer__heading">
+            <h2 id="ledger-title" class="drawer__title">Statement</h2>
+            <p id="ledger-sub" class="drawer__sub"></p>
+          </div>
+          <button id="ledger-close" class="drawer__close" type="button" aria-label="Close statement"
+                  data-drawer-close>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </header>
+        <div id="ledger-body" class="drawer__body" aria-live="polite"></div>
+      </aside>
+    </div>
+  </section>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>
