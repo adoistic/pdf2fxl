@@ -3,6 +3,7 @@ import type { AppUser, Env } from "./types";
 import { adminRequired, authRequired } from "./auth";
 import { getBalanceMcr, MCR_PER_CREDIT } from "./ledger";
 import { admin } from "./routes/admin";
+import { jobs } from "./routes/jobs";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
@@ -36,6 +37,10 @@ app.get("/api/me", async (c) => {
     balance: balanceMcr / MCR_PER_CREDIT,
   });
 });
+
+app.use("/api/jobs", authRequired);
+app.use("/api/jobs/*", authRequired);
+app.route("/api/jobs", jobs);
 
 app.use("/api/admin/*", authRequired, adminRequired);
 app.route("/api/admin", admin);
