@@ -1,7 +1,8 @@
 {
   "name": "thothica-ocr",
   "main": "src/index.ts",
-  "compatibility_date": "2026-06-01",
+  // Highest date the installed workerd supports; keeps tests and deploys on the same behavior.
+  "compatibility_date": "2025-09-06",
   "assets": {
     "directory": "../frontend",
     "binding": "ASSETS",
@@ -12,6 +13,7 @@
     {
       "binding": "DB",
       "database_name": "thothica-ocr",
+      // Placeholder: replaced with the real UUID by task 10 (wrangler d1 create). Deploy fails until then.
       "database_id": "FILLED-IN-BY-TASK-10-STEP-2",
       "migrations_dir": "migrations"
     }
