@@ -25,7 +25,9 @@
       "class_name": "OcrEngine",
       "image": "../container/Dockerfile",
       "image_build_context": "../..",
-      "max_instances": 1,
+      // Up to 10 books OCR at once; instances autoscale to 0 when idle (sleepAfter),
+      // so bursts of a bulk batch process ~10 at a time and the queue holds the rest.
+      "max_instances": 10,
       // "standard" (4 GiB tier, same as standard-1): the vitest pool's bundled
       // wrangler 4.35 only knows dev/basic/standard. Revisit when the pool
       // upgrades to vitest 4 and a current wrangler.
@@ -43,7 +45,8 @@
   "queues": {
     "producers": [{ "binding": "OCR_QUEUE", "queue": "ocr-jobs" }],
     "consumers": [
-      { "queue": "ocr-jobs", "max_batch_size": 1, "max_retries": 3, "dead_letter_queue": "ocr-jobs-dlq" }
+      { "queue": "ocr-jobs", "max_batch_size": 1, "max_concurrency": 10, "max_retries": 3,
+        "dead_letter_queue": "ocr-jobs-dlq" }
     ]
   },
   // Keep the workers.dev URL live. Adding custom routes otherwise disables it.
