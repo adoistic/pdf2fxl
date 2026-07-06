@@ -409,6 +409,75 @@ input{font:inherit}
   font-variant-numeric:tabular-nums;
 }
 
+/* ---- two-phase bulk panel: count, gate, remaining -------------------------*/
+/* One warm card that walks the group through counting, the affordability
+   choice, and the "how many left" indicator. Only one block shows at a time. */
+.bulk-panel{
+  margin-top:16px; padding:18px;
+  background:var(--cream); border:1px solid var(--line2); border-radius:var(--r-md);
+}
+.bulk-panel__block + .bulk-panel__block{margin-top:16px}
+
+.bulk-panel__track{
+  height:6px; border-radius:999px; background:var(--line2); overflow:hidden;
+}
+.bulk-panel__bar{
+  display:block; height:100%; width:0;
+  background:var(--gold); border-radius:999px;
+  transition:width .35s var(--ease);
+}
+/* While the number keeps moving, the bar breathes so it reads as live work. */
+.bulk-panel__bar--live{animation:bar-breathe 1.9s var(--ease) infinite}
+@keyframes bar-breathe{0%,100%{opacity:1}50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){
+  .bulk-panel__bar--live{animation:none}
+}
+.bulk-panel__lead{
+  margin-top:10px; font-size:14px; font-weight:600; color:var(--brown2);
+  line-height:1.45; font-variant-numeric:tabular-nums;
+}
+.bulk-panel__note{
+  margin-top:4px; font-size:12.5px; line-height:1.5; color:var(--body);
+}
+
+/* ---- the affordability gate -----------------------------------------------*/
+.bulk-gate__summary{
+  font-family:var(--serif); font-weight:600; font-size:18px; line-height:1.3;
+  color:var(--deep); font-variant-numeric:tabular-nums;
+}
+.bulk-gate__balance{
+  margin-top:4px; font-size:13px; color:var(--body);
+  font-variant-numeric:tabular-nums;
+}
+/* The over-budget message: warm, on the brown axis, never alarming red. */
+.bulk-gate__message{
+  margin-top:12px; padding:12px 15px;
+  background:var(--card); border-left:2px solid var(--gold);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  font-size:13.5px; line-height:1.55; color:var(--brown2);
+}
+.bulk-gate__actions{
+  margin-top:16px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+}
+.bulk-gate__actions .btn{flex:1 1 auto; min-width:150px}
+.btn--outline{
+  background:var(--card); color:var(--brown); border-color:var(--line);
+}
+.btn--outline:hover{border-color:var(--gold); color:var(--deep); box-shadow:var(--shadow-sm)}
+.bulk-gate__cancel{
+  flex:0 0 auto;
+  background:transparent; border:0; padding:6px 4px;
+  font-family:var(--sans); font-weight:600; font-size:13px; color:var(--body);
+  border-bottom:1px solid transparent; line-height:1.3;
+  transition:color .2s var(--ease), border-color .2s var(--ease);
+}
+.bulk-gate__cancel:hover{color:var(--brown); border-bottom-color:var(--line)}
+.bulk-gate__cancel:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+@media (max-width:479px){
+  .bulk-gate__actions .btn{flex-basis:100%}
+}
+
 /* ---- jobs list ------------------------------------------------------------*/
 .jobs{min-width:0}
 .jobs__head{

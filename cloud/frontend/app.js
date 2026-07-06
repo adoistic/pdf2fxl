@@ -35,6 +35,26 @@ const uploadStatus = document.getElementById("upload-status");
 const uploadProgress = document.getElementById("upload-progress");
 const uploadProgressBar = document.getElementById("upload-progress-bar");
 const uploadProgressText = document.getElementById("upload-progress-text");
+
+// Two-phase bulk panel: counting, the affordability gate, then the remaining
+// indicator. Only one block is visible at a time.
+const bulkPanel = document.getElementById("bulk-panel");
+const bulkCounting = document.getElementById("bulk-counting");
+const bulkCountBar = document.getElementById("bulk-count-bar");
+const bulkCountText = document.getElementById("bulk-count-text");
+const bulkCountNote = document.getElementById("bulk-count-note");
+const bulkGate = document.getElementById("bulk-gate");
+const bulkGateSummary = document.getElementById("bulk-gate-summary");
+const bulkGateBalance = document.getElementById("bulk-gate-balance");
+const bulkGateMessage = document.getElementById("bulk-gate-message");
+const bulkProcessAll = document.getElementById("bulk-process-all");
+const bulkProcessFits = document.getElementById("bulk-process-fits");
+const bulkCancel = document.getElementById("bulk-cancel");
+const bulkProcessing = document.getElementById("bulk-processing");
+const bulkProcBar = document.getElementById("bulk-proc-bar");
+const bulkProcText = document.getElementById("bulk-proc-text");
+const bulkProcNote = document.getElementById("bulk-proc-note");
+
 const jobsList = document.getElementById("jobs-list");
 const jobsCount = document.getElementById("jobs-count");
 
@@ -111,6 +131,16 @@ const FIXTURE_JOBS = [
   { id: "fx-b5", bulkId: "grp-fx", mode: "reflow", status: "failed", title: "Field notebook, 1911", pageCount: null, error: "we could not read this file", createdAt: agoIso(9 * 60 * 1000) },
   // A second solo job, ready, below the group.
   { id: "fx-2", bulkId: null, mode: "fixed", status: "ready", title: "Mir'at al-Zaman chronicle", pageCount: 96, error: null, createdAt: agoIso(30 * 60 * 60 * 1000) },
+];
+
+// After "process what fits": the books that fit are being read, the rest were
+// left uncharged and sit as "waiting for credits". Drives the group card so the
+// waiting state can be screenshotted.
+const FIXTURE_JOBS_WAITING = [
+  { id: "fx-w1", bulkId: "grp-w", mode: "reflow", status: "processing", title: "Kitab al-Aghani, volume 3", pageCount: 388, error: null, createdAt: agoIso(2 * 60 * 1000) },
+  { id: "fx-w2", bulkId: "grp-w", mode: "reflow", status: "preparing", title: "The Deccan Sultanates", pageCount: 412, error: null, createdAt: agoIso(2 * 60 * 1000) },
+  { id: "fx-w3", bulkId: "grp-w", mode: "reflow", status: "received", title: "Persian Miniatures, plates", pageCount: 260, error: null, createdAt: agoIso(2 * 60 * 1000) },
+  { id: "fx-w4", bulkId: "grp-w", mode: "reflow", status: "received", title: "A Grammar of the Persian Language", pageCount: 214, error: null, createdAt: agoIso(2 * 60 * 1000) },
 ];
 
 const FIXTURE_USERS = [
@@ -477,6 +507,7 @@ function renderJobs(jobs) {
       }
     }
   }
+  updateProcessingIndicator(jobs);
   schedulePoll(jobs);
 }
 
@@ -485,7 +516,13 @@ function renderBulkGroup(group) {
   const members = group.jobs;
   const ready = members.filter((j) => j.status === "ready");
   const failed = members.filter((j) => j.status === "failed").length;
-  const inProgress = members.filter((j) => !TERMINAL_STATUSES.has(j.status)).length;
+  // A book still in "received" was uploaded but not started: in the over-budget
+  // path it was left uncharged, waiting for credits. Everything else that is not
+  // terminal is actively being read.
+  const waiting = members.filter((j) => j.status === "received").length;
+  const inProgress = members.filter(
+    (j) => !TERMINAL_STATUSES.has(j.status) && j.status !== "received"
+  ).length;
 
   const card = el("article", "bulk");
 
@@ -499,6 +536,7 @@ function renderBulkGroup(group) {
   const summary = [];
   if (ready.length) summary.push(`${ready.length} ready`);
   if (inProgress) summary.push(`${inProgress} in progress`);
+  if (waiting) summary.push(waiting === 1 ? "1 waiting for credits" : `${waiting} waiting for credits`);
   if (failed) summary.push(failed === 1 ? "1 could not be read" : `${failed} could not be read`);
   heading.appendChild(el("p", "bulk__summary", summary.join("  ·  ")));
   head.appendChild(heading);
@@ -541,9 +579,13 @@ function renderBookRow(job) {
   }
   row.appendChild(main);
 
+  // Inside a group, a "received" book was uploaded but not started (the
+  // over-budget path leaves it uncharged), so it reads as waiting for credits.
+  const label =
+    job.status === "received" ? "Waiting for credits" : STATUS_LABELS[job.status] || job.status;
   const chip = el("span", `status ${statusClass(job.status)}`.trim());
   chip.appendChild(el("span", "status__dot"));
-  chip.appendChild(document.createTextNode(STATUS_LABELS[job.status] || job.status));
+  chip.appendChild(document.createTextNode(label));
   row.appendChild(chip);
 
   return row;
@@ -835,9 +877,9 @@ function wireAdminPanel() {
 // from its filename, and they share one bulkId when submitted.
 let selectedFiles = [];
 
-// Concurrency ceiling for bulk uploads: submit a few at a time rather than all
-// at once, so a large group does not hammer the worker.
-const BULK_CONCURRENCY = 3;
+// Concurrency ceiling for every bounded loop in a bulk run (upload, count, and
+// start). Ten at a time keeps a large group moving without hammering the worker.
+const BULK_CONCURRENCY = 10;
 
 function formatSize(bytes) {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -971,9 +1013,6 @@ function hideUploadProgress() {
   uploadProgressBar.style.width = "0%";
 }
 
-// Upload one file: POST the bytes (optionally with a bulk id), then start it.
-// Returns { ok } on success, or { stop } with a warm message when the balance
-// runs out (402), so the caller can stop launching further books.
 // Public config (whether direct-to-R2 uploads are active), fetched once.
 let _appConfig = null;
 async function getAppConfig() {
@@ -987,7 +1026,11 @@ async function getAppConfig() {
   return _appConfig;
 }
 
-async function uploadOne(file, mode, bulkId) {
+// Create a job and upload one PDF's bytes to R2, without starting it. This is
+// the reusable upload half: the single-file flow starts the job right after,
+// and the bulk flow uploads everything first, counts pages, then starts only
+// what the reader can afford. Returns the created job (with its id).
+async function createAndUpload(file, mode, bulkId) {
   const params = new URLSearchParams({ mode });
   const title = bulkId ? titleFromFilename(file.name) : jobTitle.value.trim();
   if (title) params.set("title", title);
@@ -1010,7 +1053,14 @@ async function uploadOne(file, mode, bulkId) {
       body: file,
     });
   }
+  return job;
+}
 
+// Single-file flow: upload, then start in the same step (count folds into
+// start server-side). Returns { ok } on success, or { stop } with a warm
+// message when the balance runs out (402).
+async function uploadOne(file, mode) {
+  const job = await createAndUpload(file, mode, null);
   try {
     await api(`/api/jobs/${job.id}/start`, { method: "POST" });
     return { ok: true };
@@ -1024,6 +1074,101 @@ async function uploadOne(file, mode, bulkId) {
   }
 }
 
+// Run an async task over items with a bounded number in flight at once. A shared
+// cursor hands each worker the next item; workers stop early when shouldStop()
+// returns true (used to halt starts the moment a 402 lands). Every item passes
+// through, so callers get one result per item in original order.
+async function runPool(items, limit, task, shouldStop) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      if (shouldStop && shouldStop()) return;
+      const index = cursor;
+      if (index >= items.length) return;
+      cursor += 1;
+      results[index] = await task(items[index], index);
+    }
+  }
+  const workers = [];
+  for (let i = 0; i < Math.min(limit, items.length); i += 1) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Bulk panel: one warm card that walks the group through counting, the
+// affordability gate, and the "how many left" indicator. Only one block shows
+// at a time. Every string is sentence case and shows a clear count.
+// ---------------------------------------------------------------------------
+function showBulkPanel() {
+  bulkPanel.hidden = false;
+}
+function hideBulkPanel() {
+  bulkPanel.hidden = true;
+  bulkCounting.hidden = true;
+  bulkGate.hidden = true;
+  bulkProcessing.hidden = true;
+  bulkCountNote.hidden = true;
+  bulkProcNote.hidden = true;
+}
+
+// "Counting pages... X of N", with a live bar. `unreadable` (once known) is
+// surfaced as a calm aside so the reader knows a file was set aside.
+function showCounting(done, total, unreadable) {
+  showBulkPanel();
+  bulkCounting.hidden = false;
+  bulkGate.hidden = true;
+  bulkProcessing.hidden = true;
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  bulkCountBar.style.width = `${pct}%`;
+  bulkCountBar.classList.toggle("bulk-panel__bar--live", done < total);
+  bulkCountText.textContent =
+    done >= total ? "Counting pages... done" : `Counting pages... ${done} of ${total}`;
+  if (unreadable > 0) {
+    bulkCountNote.hidden = false;
+    bulkCountNote.textContent =
+      unreadable === 1
+        ? "1 file could not be read, so we left it out of the count."
+        : `${unreadable} files could not be read, so we left them out of the count.`;
+  } else {
+    bulkCountNote.hidden = true;
+  }
+}
+
+// "Processed X of N ... Y remaining", driven by the jobs list during phase B.
+function showProcessing(processed, total, note) {
+  showBulkPanel();
+  bulkCounting.hidden = true;
+  bulkGate.hidden = true;
+  bulkProcessing.hidden = false;
+  const remaining = Math.max(0, total - processed);
+  const pct = total === 0 ? 0 : Math.round((processed / total) * 100);
+  bulkProcBar.style.width = `${pct}%`;
+  bulkProcBar.classList.toggle("bulk-panel__bar--live", remaining > 0);
+  bulkProcText.textContent =
+    remaining === 0
+      ? `All ${total} ${total === 1 ? "book is" : "books are"} in.`
+      : `Processed ${processed} of ${total}  ·  ${remaining} remaining`;
+  if (note) {
+    bulkProcNote.hidden = false;
+    bulkProcNote.textContent = note;
+  } else {
+    bulkProcNote.hidden = true;
+  }
+}
+
+function pluralBooks(n) {
+  return n === 1 ? "1 book" : `${n} books`;
+}
+function pluralPages(n) {
+  return n === 1 ? "1 page" : `${n} pages`;
+}
+function creditsWord(n) {
+  const rounded = Math.round(n * 10) / 10;
+  return `${rounded.toFixed(1)} ${rounded === 1 ? "credit" : "credits"}`;
+}
+
 async function submitUpload() {
   hideUploadStatus();
   if (selectedFiles.length === 0) {
@@ -1034,16 +1179,15 @@ async function submitUpload() {
   const files = selectedFiles.slice();
   const mode = selectedMode();
   const isBulk = files.length >= 2;
-  const bulkId = isBulk ? crypto.randomUUID() : null;
 
-  uploadButton.disabled = true;
-  const restLabel = uploadButton.textContent;
-  uploadButton.textContent = isBulk ? "Uploading your books..." : "Uploading your scan...";
-
-  // Single file keeps the original, quieter flow (no progress bar).
+  // Single file keeps the original, quieter one-step flow (no progress bar,
+  // count folds into start server-side).
   if (!isBulk) {
+    uploadButton.disabled = true;
+    const restLabel = uploadButton.textContent;
+    uploadButton.textContent = "Uploading your scan...";
     try {
-      const result = await uploadOne(files[0], mode, null);
+      const result = await uploadOne(files[0], mode);
       if (result.stop) {
         showUploadStatus(result.message, "error");
       } else {
@@ -1063,72 +1207,253 @@ async function submitUpload() {
     return;
   }
 
-  // Bulk: submit with bounded concurrency. A shared cursor hands each worker
-  // the next file; the moment a 402 (or hard error) lands, we stop handing out
-  // new files, so books already submitted keep going but no new ones start.
-  let done = 0;
-  let started = 0;
-  let stopped = null; // set to the warm message when credits run out
-  let hadError = false;
-  let cursor = 0;
-  const total = files.length;
-  showUploadProgress(0, total);
+  await runBulk(files, mode);
+}
 
-  async function worker() {
-    while (true) {
-      if (stopped) return;
-      const index = cursor;
-      if (index >= total) return;
-      cursor += 1;
-      const file = files[index];
-      try {
-        const result = await uploadOne(file, mode, bulkId);
-        if (result.stop) {
-          stopped = result.message;
-          return;
-        }
-        started += 1;
-      } catch (err) {
-        hadError = true;
-        console.error("bulk upload failed for a book", err);
-      } finally {
-        done += 1;
-        showUploadProgress(done, total);
-      }
+// ---------------------------------------------------------------------------
+// Bulk, two phases with a gate between them.
+//
+//   Phase A  upload every file, then count pages per job (no charge).
+//   Gate     sum the credits needed, fetch the balance, and let the reader
+//            choose: process the whole group, process only what fits, or stop.
+//   Phase B  start the chosen books (each places its hold), then poll the jobs
+//            list and show how many are left.
+//
+// The reader is never silently over-charged: nothing is started until they
+// pick, and even then the atomic hold on the server is the real backstop.
+// ---------------------------------------------------------------------------
+async function runBulk(files, mode) {
+  const bulkId = crypto.randomUUID();
+  const total = files.length;
+
+  uploadButton.disabled = true;
+  const restLabel = uploadButton.textContent;
+  uploadButton.textContent = "Uploading your books...";
+  hideBulkPanel();
+
+  // ---- Phase A.1: upload every file to R2 (create job, no start) -----------
+  showUploadProgress(0, total);
+  let uploaded = 0;
+  const uploads = await runPool(files, BULK_CONCURRENCY, async (file) => {
+    try {
+      const job = await createAndUpload(file, mode, bulkId);
+      return { job, title: titleFromFilename(file.name) || file.name };
+    } catch (err) {
+      console.error("bulk upload failed for a book", err);
+      return { failed: true };
+    } finally {
+      uploaded += 1;
+      showUploadProgress(uploaded, total);
+    }
+  });
+  hideUploadProgress();
+
+  const created = uploads.filter((u) => u && u.job);
+  if (created.length === 0) {
+    hideBulkPanel();
+    showUploadStatus("We could not upload these books. Try again in a moment.", "error");
+    uploadButton.disabled = false;
+    uploadButton.textContent = restLabel;
+    return;
+  }
+
+  // ---- Phase A.2: count pages per uploaded job (no charge) -----------------
+  let counted = 0;
+  let unreadable = uploads.length - created.length; // upload failures count as unreadable
+  let totalPages = 0;
+  let totalCredits = 0;
+  const countTotal = created.length;
+  showCounting(0, countTotal, unreadable);
+
+  const priced = await runPool(created, BULK_CONCURRENCY, async (entry) => {
+    try {
+      const res = await api(`/api/jobs/${entry.job.id}/count`, { method: "POST" });
+      totalPages += res.pageCount || 0;
+      totalCredits += res.creditsNeeded || 0;
+      return { ...entry, pageCount: res.pageCount, creditsNeeded: res.creditsNeeded };
+    } catch (err) {
+      // A bad file (4xx) or engine failure: record it and leave it out of the total.
+      console.error("bulk count failed for a book", err);
+      unreadable += 1;
+      return null;
+    } finally {
+      counted += 1;
+      showCounting(counted, countTotal, unreadable);
+    }
+  });
+
+  const countable = priced.filter(Boolean);
+  if (countable.length === 0) {
+    hideBulkPanel();
+    showUploadStatus(
+      "None of these files could be read, so there is nothing to process.",
+      "error"
+    );
+    await refreshJobs();
+    uploadButton.disabled = false;
+    uploadButton.textContent = restLabel;
+    return;
+  }
+
+  // ---- Gate: fetch balance, then let the reader choose ---------------------
+  let balance = currentBalance;
+  try {
+    const me = await api("/api/me");
+    renderMe(me);
+    balance = me.balance;
+  } catch (err) {
+    console.error("could not refresh balance before the gate", err);
+    balance = currentBalance == null ? 0 : currentBalance;
+  }
+
+  await refreshJobs(); // the uploaded books now show as received in the list
+  presentGate(countable, totalPages, totalCredits, balance, unreadable, restLabel);
+}
+
+// The affordability gate. Shows the summary and, depending on whether the
+// group fits the balance, either a single "process these books" button or a warm
+// shortfall message with a "process what fits" fallback. Wires the buttons to
+// phase B and always offers a plain way out.
+function presentGate(countable, totalPages, totalCredits, balance, unreadable, restLabel) {
+  uploadButton.disabled = false;
+  uploadButton.textContent = restLabel;
+
+  showBulkPanel();
+  bulkCounting.hidden = true;
+  bulkProcessing.hidden = true;
+  bulkGate.hidden = false;
+
+  const affords = totalCredits <= balance + 1e-9;
+  const books = countable.length;
+
+  bulkGateSummary.textContent =
+    `${pluralBooks(books)}, ${pluralPages(totalPages)}, ${creditsWord(totalCredits)} needed.`;
+  bulkGateBalance.textContent = `You have ${creditsWord(balance)}.`;
+
+  // How many books, in creation order, fit inside the balance.
+  let fitCredits = 0;
+  let fitCount = 0;
+  for (const entry of countable) {
+    if (fitCredits + entry.creditsNeeded <= balance + 1e-9) {
+      fitCredits += entry.creditsNeeded;
+      fitCount += 1;
+    } else {
+      break;
     }
   }
 
-  const workers = [];
-  for (let i = 0; i < Math.min(BULK_CONCURRENCY, total); i += 1) {
-    workers.push(worker());
+  // Reset action buttons.
+  bulkProcessAll.hidden = true;
+  bulkProcessFits.hidden = true;
+  bulkGateMessage.hidden = true;
+  bulkProcessAll.onclick = null;
+  bulkProcessFits.onclick = null;
+
+  if (affords) {
+    bulkProcessAll.hidden = false;
+    bulkProcessAll.textContent = `Process ${pluralBooks(books)}`;
+    bulkProcessAll.onclick = () => startChosen(countable, restLabel);
+  } else {
+    bulkGateMessage.hidden = false;
+    bulkGateMessage.textContent =
+      `This group needs ${creditsWord(totalCredits)} but you have ${creditsWord(balance)}. ` +
+      `Remove some books or add credits.`;
+    if (fitCount > 0) {
+      bulkProcessFits.hidden = false;
+      bulkProcessFits.textContent =
+        `Process what fits (${pluralBooks(fitCount)}, ${creditsWord(fitCredits)})`;
+      bulkProcessFits.onclick = () => startChosen(countable.slice(0, fitCount), restLabel);
+    }
   }
-  await Promise.all(workers);
 
-  hideUploadProgress();
-
-  if (stopped) {
-    const kept = started === 1 ? "1 book is on its way" : `${started} books are on their way`;
-    showUploadStatus(`${stopped} ${kept}; the rest were not started.`, "error");
-  } else if (hadError && started === 0) {
-    showUploadStatus("We could not start these books. Try again in a moment.", "error");
-  } else if (hadError) {
+  bulkCancel.onclick = () => {
+    hideBulkPanel();
     showUploadStatus(
-      `${started} of ${total} books are in. Some did not go through; try those again.`,
+      "Nothing was started, so no credits were used. Your uploaded books are waiting for credits.",
       "error"
     );
-  } else {
+  };
+}
+
+// Phase B: start the chosen books with bounded concurrency, then poll the jobs
+// list and show how many are left. A 402 on any start (a race against another
+// tab) stops launching more and surfaces the warm shortfall message.
+async function startChosen(chosen, restLabel) {
+  const total = chosen.length;
+  bulkProcessAll.disabled = true;
+  bulkProcessFits.disabled = true;
+
+  // Only the books that actually started drive the remaining indicator, so the
+  // count stays exact even if a 402 stops the launch partway.
+  const startedIds = new Set();
+  let raced = null; // warm message if a 402 lands mid-launch
+
+  await runPool(
+    chosen,
+    BULK_CONCURRENCY,
+    async (entry) => {
+      try {
+        await api(`/api/jobs/${entry.job.id}/start`, { method: "POST" });
+        startedIds.add(entry.job.id);
+      } catch (err) {
+        if (err.status === 402 && !raced) {
+          raced = `We ran out of credits partway through. ${startedIds.size} of ${total} started; the rest are waiting for credits.`;
+        } else if (err.status !== 402) {
+          console.error("bulk start failed for a book", err);
+        }
+      }
+    },
+    () => raced != null
+  );
+
+  bulkProcessAll.disabled = false;
+  bulkProcessFits.disabled = false;
+
+  if (startedIds.size === 0) {
+    // Nothing started (every start raced to a 402): keep the gate out of the
+    // way and surface the warm shortfall, uncharged.
+    bulkStartedIds = null;
+    bulkStartedCount = 0;
+    hideBulkPanel();
     showUploadStatus(
-      started === 1
-        ? "Your book is in. We are reading the pages now."
-        : `All ${started} books are in. We are reading the pages now.`
+      raced || "We could not start these books. They are waiting for credits.",
+      "error"
     );
-    clearFiles();
+    await refreshMe();
+    await refreshJobs();
+    return;
   }
 
-  await refreshJobs();
+  // Move to the remaining indicator and let polling drive it from here.
+  bulkStartedIds = startedIds;
+  bulkStartedCount = startedIds.size;
+  showProcessing(0, startedIds.size, raced);
+  hideUploadStatus();
+
   await refreshMe();
-  uploadButton.disabled = false;
-  uploadButton.textContent = restLabel;
+  await refreshJobs(); // renders the bulk card and schedules polling
+}
+
+// Ids the reader started in this session's bulk run, and how many. While these
+// are still being read, the jobs poll updates the remaining indicator; once all
+// are terminal, the indicator settles and stops leading.
+let bulkStartedIds = null;
+let bulkStartedCount = 0;
+
+// Called after each jobs refresh: if a bulk run is in flight, count how many of
+// the started books have reached a terminal state and update the indicator.
+function updateProcessingIndicator(jobs) {
+  if (!bulkStartedIds || bulkStartedCount === 0) return;
+  const mine = jobs.filter((j) => bulkStartedIds.has(j.id));
+  const done = mine.filter((j) => TERMINAL_STATUSES.has(j.status)).length;
+  showProcessing(done, bulkStartedCount);
+  if (done >= bulkStartedCount) {
+    // Everything settled: clear the run so the indicator stops leading, and
+    // clear the file selection now that the group is fully in.
+    bulkStartedIds = null;
+    bulkStartedCount = 0;
+    clearFiles();
+  }
 }
 
 function wireUploadPanel() {
@@ -1207,6 +1532,37 @@ function wireLoginActions() {
   });
 }
 
+// Localhost fixtures for the two-phase bulk panel, so each state can be
+// screenshotted without a backend. `?preview-fixtures=<state>`:
+//   counting     the "counting pages X of N" indicator, mid-count
+//   gate-ok      the affordability gate when the group fits
+//   gate-over    the gate when the group is over budget (with "process what fits")
+//   processing   the "processed X of N, Y remaining" indicator, mid-run
+//   waiting      the group card after "process what fits" (some waiting for credits)
+// Any other value (or the plain flag) leaves the panel hidden.
+function renderBulkFixture() {
+  const q = location.search;
+  const at = (key) => q.includes(`preview-fixtures=${key}`);
+
+  if (at("counting")) {
+    showCounting(6, 14, 1);
+  } else if (at("gate-ok")) {
+    presentGate(
+      Array.from({ length: 12 }, (_, i) => ({ job: { id: `fx-c${i}` }, creditsNeeded: 20 })),
+      2680, 22.9, 42.7, 0, "Create my edition"
+    );
+  } else if (at("gate-over")) {
+    // Nine books at ~9 credits each = ~81 needed against a 42.7 balance; the
+    // first four fit inside the balance.
+    const books = Array.from({ length: 9 }, (_, i) => ({
+      job: { id: `fx-o${i}` }, creditsNeeded: 9,
+    }));
+    presentGate(books, 900, 81, 42.7, 1, "Create my edition");
+  } else if (at("processing")) {
+    showProcessing(4, 12);
+  }
+}
+
 async function boot() {
   wireLoginActions();
   wireUploadPanel();
@@ -1220,16 +1576,21 @@ async function boot() {
     // Visual pass only: canned data, no auth, no polling. See the note above.
     // `?preview-fixtures=admin` opens straight on the admin view; the plain
     // flag stays on the app shell as before, and `=empty` shows the empty jobs
-    // list. Everything is fixture data; no real API is ever hit.
+    // list. The bulk states below drive the two-phase panel from fixture data
+    // so each can be screenshotted without a backend. No real API is ever hit.
     renderMe(FIXTURE_ME);
     userEmail.textContent = FIXTURE_ME.email;
-    renderJobs(location.search.includes("preview-fixtures=empty") ? [] : FIXTURE_JOBS);
+    let fixtureJobs = FIXTURE_JOBS;
+    if (location.search.includes("preview-fixtures=empty")) fixtureJobs = [];
+    else if (location.search.includes("preview-fixtures=waiting")) fixtureJobs = FIXTURE_JOBS_WAITING;
+    renderJobs(fixtureJobs);
     sessionReady = true;
     if (location.search.includes("preview-fixtures=admin")) {
       renderUsers(FIXTURE_USERS);
       showAdmin();
     } else {
       showApp();
+      renderBulkFixture();
     }
     return;
   }

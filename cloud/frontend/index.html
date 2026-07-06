@@ -174,6 +174,36 @@
             <p id="upload-progress-text" class="upload-progress__text"></p>
           </div>
 
+          <!-- Two-phase bulk panel. Each block is shown one at a time as the
+               group moves: counting pages, then the affordability gate, then
+               the "how many left" indicator while books are read. -->
+          <div id="bulk-panel" class="bulk-panel" hidden>
+
+            <div id="bulk-counting" class="bulk-panel__block" role="status" hidden>
+              <div class="bulk-panel__track"><span id="bulk-count-bar" class="bulk-panel__bar"></span></div>
+              <p id="bulk-count-text" class="bulk-panel__lead"></p>
+              <p id="bulk-count-note" class="bulk-panel__note" hidden></p>
+            </div>
+
+            <div id="bulk-gate" class="bulk-panel__block bulk-gate" hidden>
+              <p id="bulk-gate-summary" class="bulk-gate__summary"></p>
+              <p id="bulk-gate-balance" class="bulk-gate__balance"></p>
+              <p id="bulk-gate-message" class="bulk-gate__message" hidden></p>
+              <div id="bulk-gate-actions" class="bulk-gate__actions">
+                <button id="bulk-process-all" class="btn btn--primary" type="button" hidden>Process these books</button>
+                <button id="bulk-process-fits" class="btn btn--outline" type="button" hidden>Process what fits</button>
+                <button id="bulk-cancel" class="bulk-gate__cancel" type="button">Not now</button>
+              </div>
+            </div>
+
+            <div id="bulk-processing" class="bulk-panel__block" role="status" hidden>
+              <div class="bulk-panel__track"><span id="bulk-proc-bar" class="bulk-panel__bar"></span></div>
+              <p id="bulk-proc-text" class="bulk-panel__lead"></p>
+              <p id="bulk-proc-note" class="bulk-panel__note" hidden></p>
+            </div>
+
+          </div>
+
           <p id="upload-status" class="upload-status" role="status" hidden></p>
         </section>
 
