@@ -40,6 +40,12 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["OcrEngine"] }
   ],
+  "queues": {
+    "producers": [{ "binding": "OCR_QUEUE", "queue": "ocr-jobs" }],
+    "consumers": [
+      { "queue": "ocr-jobs", "max_batch_size": 1, "max_retries": 3, "dead_letter_queue": "ocr-jobs-dlq" }
+    ]
+  },
   // Keep the workers.dev URL live. Adding custom routes otherwise disables it.
   "workers_dev": true,
   "vars": {

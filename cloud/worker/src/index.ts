@@ -4,6 +4,7 @@ import { adminRequired, authRequired } from "./auth";
 import { getBalanceMcr, MCR_PER_CREDIT } from "./ledger";
 import { admin } from "./routes/admin";
 import { jobs } from "./routes/jobs";
+import { handleQueue } from "./finalize";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
@@ -45,5 +46,9 @@ app.route("/api/jobs", jobs);
 app.use("/api/admin/*", authRequired, adminRequired);
 app.route("/api/admin", admin);
 
-export default app;
+// A Worker with a queue consumer needs a default export object with both fetch
+// and queue handlers. The Hono app is exported named so route tests can still
+// call app.request(...).
+export { app };
+export default { fetch: app.fetch, queue: handleQueue };
 export { OcrEngine } from "./container";

@@ -1,6 +1,6 @@
 import { env, fetchMock } from "cloudflare:test";
 import { beforeAll, describe, it, expect } from "vitest";
-import app from "../src/index";
+import { app } from "../src/index";
 import { makeFirebaseMock, type FirebaseMock } from "./firebase-mock";
 
 let fb: FirebaseMock;

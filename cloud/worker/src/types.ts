@@ -3,6 +3,8 @@ export interface Env {
   ASSETS: Fetcher;
   STORE: R2Bucket;
   OCR_ENGINE: DurableObjectNamespace;
+  OCR_QUEUE: Queue<{ jobId: string }>;
+  MISTRAL_API_KEY: string;
   FIREBASE_PROJECT_ID: string;
   ADMIN_EMAIL: string;
 }

@@ -77,7 +77,8 @@ jobs.post("/:id/start", async (c) => {
     const body = (await res.json()) as { page_count: number };
     return { pageCount: body.page_count };
   };
-  const result = await startJob(c.env.DB, c.env.STORE, prepare, c.req.param("id"), user.id);
+  const jobId = c.req.param("id");
+  const result = await startJob(c.env.DB, c.env.STORE, prepare, jobId, user.id);
   if (!result.ok) {
     const status =
       result.reason === "not_found" ? 404
@@ -91,5 +92,8 @@ jobs.post("/:id/start", async (c) => {
       : "we could not read this file";
     return c.json({ error: message }, status);
   }
+  // The job is now in 'processing'; hand it to the OCR queue consumer, which
+  // streams the PDF to the container, stores artifacts, and marks it ready.
+  await c.env.OCR_QUEUE.send({ jobId });
   return c.json({ ok: true, pageCount: result.pageCount, heldCredits: result.heldMcr / 1000 });
 });
