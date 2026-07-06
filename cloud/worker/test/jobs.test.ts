@@ -57,3 +57,19 @@ describe("jobs module", () => {
     expect(job.id).toBe("explicit-1");
   });
 });
+
+describe("jobs module: bulk grouping", () => {
+  it("groups jobs under a shared bulk id", async () => {
+    const owner = await createUser();
+    const bulkId = "bulk-abc";
+    const a = await createJob(env.DB, { userId: owner, bulkId, mode: "reflow", express: false, title: "A", r2UploadKey: "k1" });
+    const b = await createJob(env.DB, { userId: owner, bulkId, mode: "reflow", express: false, title: "B", r2UploadKey: "k2" });
+    const solo = await createJob(env.DB, { userId: owner, mode: "reflow", express: false, title: "C", r2UploadKey: "k3" });
+    expect(a.bulkId).toBe(bulkId);
+    expect(b.bulkId).toBe(bulkId);
+    expect(solo.bulkId).toBeNull();
+    const all = await listJobsForUser(env.DB, owner);
+    const inBulk = all.filter((j) => j.bulkId === bulkId).map((j) => j.title).sort();
+    expect(inBulk).toEqual(["A", "B"]);
+  });
+});

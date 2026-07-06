@@ -25,7 +25,7 @@ type FinalizeRow = {
 
 function toJob(r: FinalizeRow): Job {
   return {
-    id: r.id, userId: r.user_id, mode: r.mode, express: r.express === 1,
+    id: r.id, userId: r.user_id, bulkId: null, mode: r.mode, express: r.express === 1,
     status: r.status, title: r.title, pageCount: r.page_count, rateMcr: r.rate_mcr,
     holdId: r.hold_id, r2UploadKey: r.r2_upload_key, errorPublic: r.error_public,
     createdAt: r.created_at,

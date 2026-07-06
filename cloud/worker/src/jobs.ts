@@ -9,6 +9,7 @@ export type JobStatus =
 export interface Job {
   id: string;
   userId: number;
+  bulkId: string | null;
   mode: JobMode;
   express: boolean;
   status: JobStatus;
@@ -22,18 +23,18 @@ export interface Job {
 }
 
 type JobRow = {
-  id: string; user_id: number; mode: JobMode; express: number; status: JobStatus;
+  id: string; user_id: number; bulk_id: string | null; mode: JobMode; express: number; status: JobStatus;
   title: string | null; page_count: number | null; rate_mcr: number | null;
   hold_id: number | null; r2_upload_key: string | null; error_public: string | null;
   created_at: string;
 };
 
 const COLS =
-  "id, user_id, mode, express, status, title, page_count, rate_mcr, hold_id, r2_upload_key, error_public, created_at";
+  "id, user_id, bulk_id, mode, express, status, title, page_count, rate_mcr, hold_id, r2_upload_key, error_public, created_at";
 
 function toJob(r: JobRow): Job {
   return {
-    id: r.id, userId: r.user_id, mode: r.mode, express: r.express === 1,
+    id: r.id, userId: r.user_id, bulkId: r.bulk_id, mode: r.mode, express: r.express === 1,
     status: r.status, title: r.title, pageCount: r.page_count, rateMcr: r.rate_mcr,
     holdId: r.hold_id, r2UploadKey: r.r2_upload_key, errorPublic: r.error_public,
     createdAt: r.created_at,
@@ -42,15 +43,15 @@ function toJob(r: JobRow): Job {
 
 export async function createJob(
   db: D1Database,
-  opts: { id?: string; userId: number; mode: JobMode; express: boolean; title: string | null; r2UploadKey: string }
+  opts: { id?: string; userId: number; bulkId?: string | null; mode: JobMode; express: boolean; title: string | null; r2UploadKey: string }
 ): Promise<Job> {
   const id = opts.id ?? crypto.randomUUID();
   const row = await db
     .prepare(
-      `INSERT INTO jobs (id, user_id, mode, express, title, r2_upload_key)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING ${COLS}`
+      `INSERT INTO jobs (id, user_id, bulk_id, mode, express, title, r2_upload_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING ${COLS}`
     )
-    .bind(id, opts.userId, opts.mode, opts.express ? 1 : 0, opts.title, opts.r2UploadKey)
+    .bind(id, opts.userId, opts.bulkId ?? null, opts.mode, opts.express ? 1 : 0, opts.title, opts.r2UploadKey)
     .first<JobRow>();
   return toJob(row!);
 }

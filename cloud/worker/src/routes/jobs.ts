@@ -13,7 +13,7 @@ export const jobs = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
 function publicJob(j: Job) {
   return {
-    id: j.id, mode: j.mode, express: j.express, status: j.status, title: j.title,
+    id: j.id, bulkId: j.bulkId, mode: j.mode, express: j.express, status: j.status, title: j.title,
     pageCount: j.pageCount, error: j.errorPublic, createdAt: j.createdAt,
   };
 }
@@ -22,6 +22,9 @@ jobs.post("/", async (c) => {
   const user = c.get("user");
   const mode = c.req.query("mode");
   const title = c.req.query("title")?.slice(0, 200) || null;
+  // Optional bulk-group id: many books uploaded together share one bulkId so the
+  // front end can group them. Bounded to a uuid-ish token.
+  const bulkId = c.req.query("bulk")?.slice(0, 64) || null;
   if (mode !== "reflow" && mode !== "fixed") {
     return c.json({ error: "mode must be reflow or fixed" }, 400);
   }
@@ -41,7 +44,7 @@ jobs.post("/", async (c) => {
   const key = `uploads/${user.id}/${id}.pdf`;
   await c.env.STORE.put(key, body, { httpMetadata: { contentType: "application/pdf" } });
   const job = await createJob(c.env.DB, {
-    id, userId: user.id, mode: mode as JobMode, express: false, title, r2UploadKey: key,
+    id, userId: user.id, bulkId, mode: mode as JobMode, express: false, title, r2UploadKey: key,
   });
   return c.json(publicJob(job));
 });
