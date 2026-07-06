@@ -58,3 +58,50 @@ export async function placeHold(
     .first<{ id: number }>();
   return row ? { ok: true, holdId: row.id } : { ok: false, reason: "insufficient_credits" };
 }
+
+// Settlement rows reference their hold via ref_id. The partial unique index
+// ux_ledger_settlement lets exactly one settlement row exist per hold, so a
+// concurrent capture and release cannot both succeed; the loser hits the
+// UNIQUE constraint and reports false.
+
+function isUniqueViolation(err: unknown): boolean {
+  return String(err).includes("UNIQUE");
+}
+
+// Capture: the job delivered. The hold's negative amount stands as the final
+// charge; the capture row is a zero-amount marker that locks the hold.
+export async function captureHold(db: D1Database, holdId: number): Promise<boolean> {
+  try {
+    const res = await db
+      .prepare(
+        `INSERT INTO credit_ledger (user_id, kind, amount_mcr, job_id, ref_id)
+         SELECT user_id, 'capture', 0, job_id, id
+         FROM credit_ledger WHERE id = ?1 AND kind = 'hold'`
+      )
+      .bind(holdId)
+      .run();
+    return res.meta.changes === 1;
+  } catch (err) {
+    if (isUniqueViolation(err)) return false;
+    throw err;
+  }
+}
+
+// Release: the job failed or was cancelled. Insert the exact opposite of the
+// hold amount, refunding it in full.
+export async function releaseHold(db: D1Database, holdId: number): Promise<boolean> {
+  try {
+    const res = await db
+      .prepare(
+        `INSERT INTO credit_ledger (user_id, kind, amount_mcr, job_id, ref_id)
+         SELECT user_id, 'release', -amount_mcr, job_id, id
+         FROM credit_ledger WHERE id = ?1 AND kind = 'hold'`
+      )
+      .bind(holdId)
+      .run();
+    return res.meta.changes === 1;
+  } catch (err) {
+    if (isUniqueViolation(err)) return false;
+    throw err;
+  }
+}
