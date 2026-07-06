@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppUser, Env } from "../types";
 import { createJob, getJobForUser, listJobsForUser, type Job, type JobMode } from "../jobs";
+import { startJob } from "../start";
 
 // Deliverable ceiling: the body is buffered in the isolate (128MB memory) and
 // the edge caps request bodies near this size anyway. Larger scans need the
@@ -59,4 +60,36 @@ jobs.get("/:id", async (c) => {
   const job = await getJobForUser(c.env.DB, c.req.param("id"), c.get("user").id);
   if (!job) return c.json({ error: "not found" }, 404);
   return c.json(publicJob(job));
+});
+
+jobs.post("/:id/start", async (c) => {
+  const user = c.get("user");
+  const prepare = async (pdf: ArrayBuffer) => {
+    const engine = c.env.OCR_ENGINE.getByName("engine");
+    const res = await engine.fetch(
+      new Request("http://engine/prepare", {
+        method: "POST",
+        headers: { "content-type": "application/pdf" },
+        body: pdf,
+      })
+    );
+    if (!res.ok) throw new Error(`engine /prepare ${res.status}`);
+    const body = (await res.json()) as { page_count: number };
+    return { pageCount: body.page_count };
+  };
+  const result = await startJob(c.env.DB, c.env.STORE, prepare, c.req.param("id"), user.id);
+  if (!result.ok) {
+    const status =
+      result.reason === "not_found" ? 404
+      : result.reason === "not_startable" ? 409
+      : result.reason === "insufficient_credits" ? 402
+      : 500;
+    const message =
+      result.reason === "insufficient_credits" ? "not enough credits for this document"
+      : result.reason === "not_startable" ? "this job already started"
+      : result.reason === "not_found" ? "not found"
+      : "we could not read this file";
+    return c.json({ error: message }, status);
+  }
+  return c.json({ ok: true, pageCount: result.pageCount, heldCredits: result.heldMcr / 1000 });
 });
