@@ -348,6 +348,67 @@ input{font:inherit}
 }
 .upload-status--error{border-left-color:var(--brick); color:var(--brick)}
 
+/* ---- upload: the queue list (two or more chosen PDFs) ---------------------*/
+.queue{
+  margin-top:16px; padding:16px 16px 14px;
+  background:var(--cream); border:1px solid var(--line2); border-radius:var(--r-md);
+}
+.queue__head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  margin-bottom:12px;
+}
+.queue__count{
+  font-weight:700; font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--gold);
+}
+.queue__clear{
+  background:transparent; border:0; padding:0;
+  font-family:var(--sans); font-weight:600; font-size:13px; color:var(--brown);
+  border-bottom:1px solid var(--line); line-height:1.3;
+  transition:border-color .2s var(--ease), color .2s var(--ease);
+}
+.queue__clear:hover{border-color:var(--gold); color:var(--deep)}
+.queue__clear:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.queue__files{list-style:none; display:flex; flex-direction:column; gap:8px}
+.queue__file{
+  display:flex; align-items:center; gap:12px;
+  padding:10px 12px;
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-sm);
+}
+.queue__info{flex:1; min-width:0; display:flex; align-items:baseline; gap:10px}
+.queue__name{
+  flex:1; min-width:0;
+  font-weight:600; font-size:14px; color:var(--deep);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.queue__size{flex:0 0 auto; font-size:12px; color:var(--body); font-variant-numeric:tabular-nums}
+.queue__remove{
+  flex:0 0 auto;
+  display:inline-flex; align-items:center; justify-content:center;
+  width:30px; height:30px; padding:0;
+  background:transparent; border:1px solid var(--line); border-radius:999px;
+  color:var(--brown2);
+  transition:border-color .2s var(--ease), color .2s var(--ease), background .2s var(--ease);
+}
+.queue__remove:hover{border-color:var(--brick); color:var(--brick); background:var(--card)}
+.queue__remove:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.queue__note{margin-top:12px; font-size:12.5px; line-height:1.5; color:var(--body)}
+
+/* ---- upload: bulk submission progress -------------------------------------*/
+.upload-progress{margin-top:16px}
+.upload-progress__track{
+  height:6px; border-radius:999px; background:var(--line2); overflow:hidden;
+}
+.upload-progress__bar{
+  display:block; height:100%; width:0;
+  background:var(--gold); border-radius:999px;
+  transition:width .3s var(--ease);
+}
+.upload-progress__text{
+  margin-top:8px; font-size:13px; color:var(--brown2);
+  font-variant-numeric:tabular-nums;
+}
+
 /* ---- jobs list ------------------------------------------------------------*/
 .jobs{min-width:0}
 .jobs__head{
@@ -375,6 +436,41 @@ input{font:inherit}
 }
 .job__meta{margin-top:3px; font-size:13px; color:var(--body)}
 .job__error{margin-top:5px; font-size:13px; line-height:1.5; color:var(--brick)}
+
+/* ---- bulk group: one card framing several book rows -----------------------*/
+.bulk{
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-md);
+  box-shadow:var(--shadow-sm);
+  overflow:hidden;
+}
+.bulk__head{
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:16px 18px 15px;
+  background:var(--cream); border-bottom:1px solid var(--line2);
+}
+.bulk__heading{min-width:0}
+.bulk__title{
+  font-family:var(--serif); font-weight:600; font-size:20px; line-height:1.2;
+  color:var(--deep);
+}
+.bulk__summary{margin-top:3px; font-size:12.5px; color:var(--body)}
+.download-btn--all{flex:0 0 auto}
+.bulk__rows{display:flex; flex-direction:column}
+
+.book{
+  display:flex; align-items:flex-start; gap:16px;
+  padding:14px 18px;
+  border-top:1px solid var(--line2);
+}
+.bulk__rows .book:first-child{border-top:0}
+.book__main{flex:1; min-width:0}
+.book__title{
+  font-family:var(--serif); font-weight:600; font-size:17px; line-height:1.25;
+  color:var(--deep);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.book__meta{margin-top:2px; font-size:12.5px; color:var(--body)}
+.book__error{margin-top:4px; font-size:12.5px; line-height:1.5; color:var(--brick)}
 
 /* ---- ready job downloads: secondary pill buttons, gold as seasoning -------*/
 .downloads{
@@ -442,6 +538,11 @@ input{font:inherit}
   .job{flex-direction:column; align-items:stretch; gap:10px}
   .job__title{white-space:normal}
   .status{align-self:flex-start}
+  .bulk__head{flex-direction:column; align-items:flex-start; gap:12px}
+  .download-btn--all{align-self:stretch}
+  .book{flex-direction:column; align-items:stretch; gap:8px}
+  .book__title{white-space:normal}
+  .book .status{align-self:flex-start}
 }
 /* Narrow phones: the bar becomes two calm rows, logo and sign out up top,
    admin link and balance underneath. */

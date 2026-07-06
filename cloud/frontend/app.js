@@ -23,10 +23,18 @@ const dropZone = document.getElementById("drop-zone");
 const dropZoneLine = document.getElementById("drop-zone-line");
 const dropZoneFile = document.getElementById("drop-zone-file");
 const fileInput = document.getElementById("file-input");
+const titleField = document.getElementById("title-field");
 const jobTitle = document.getElementById("job-title");
+const queueList = document.getElementById("queue-list");
+const queueCount = document.getElementById("queue-count");
+const queueFiles = document.getElementById("queue-files");
+const queueClear = document.getElementById("queue-clear");
 const ratePerPage = document.getElementById("rate-per-page");
 const uploadButton = document.getElementById("upload-button");
 const uploadStatus = document.getElementById("upload-status");
+const uploadProgress = document.getElementById("upload-progress");
+const uploadProgressBar = document.getElementById("upload-progress-bar");
+const uploadProgressText = document.getElementById("upload-progress-text");
 const jobsList = document.getElementById("jobs-list");
 const jobsCount = document.getElementById("jobs-count");
 
@@ -93,13 +101,16 @@ const FIXTURE_ME = {
 };
 
 const FIXTURE_JOBS = [
-  { id: "fx-1", mode: "reflow", status: "received", title: "Mughal Gardens survey", pageCount: null, error: null, createdAt: agoIso(40 * 1000) },
-  { id: "fx-2", mode: "reflow", status: "preparing", title: "Kitab al-Aghani, volume 3", pageCount: null, error: null, createdAt: agoIso(3 * 60 * 1000) },
-  { id: "fx-3", mode: "reflow", status: "processing", title: "The Deccan Sultanates", pageCount: 412, error: null, createdAt: agoIso(18 * 60 * 1000) },
-  { id: "fx-4", mode: "fixed", status: "processing", title: null, pageCount: 96, error: null, createdAt: agoIso(52 * 60 * 1000) },
-  { id: "fx-5", mode: "reflow", status: "ready", title: "Persian Miniatures, plates", pageCount: 58, error: null, createdAt: agoIso(4 * 60 * 60 * 1000) },
-  { id: "fx-6", mode: "reflow", status: "ready", title: "A Grammar of the Persian Language", pageCount: 214, error: null, createdAt: agoIso(30 * 60 * 60 * 1000) },
-  { id: "fx-7", mode: "reflow", status: "failed", title: "Field notebook, 1911", pageCount: null, error: "we could not read this file", createdAt: agoIso(3 * 24 * 60 * 60 * 1000) },
+  // A solo (ungrouped) job, still received, renders exactly as before.
+  { id: "fx-1", bulkId: null, mode: "reflow", status: "received", title: "Mughal Gardens survey", pageCount: null, error: null, createdAt: agoIso(40 * 1000) },
+  // A bulk group of five books sharing one bulkId, mixed statuses incl. two ready.
+  { id: "fx-b1", bulkId: "grp-fx", mode: "reflow", status: "processing", title: "Kitab al-Aghani, volume 3", pageCount: 388, error: null, createdAt: agoIso(9 * 60 * 1000) },
+  { id: "fx-b2", bulkId: "grp-fx", mode: "reflow", status: "ready", title: "The Deccan Sultanates", pageCount: 412, error: null, createdAt: agoIso(9 * 60 * 1000) },
+  { id: "fx-b3", bulkId: "grp-fx", mode: "reflow", status: "preparing", title: "Persian Miniatures, plates", pageCount: null, error: null, createdAt: agoIso(9 * 60 * 1000) },
+  { id: "fx-b4", bulkId: "grp-fx", mode: "reflow", status: "ready", title: "A Grammar of the Persian Language", pageCount: 214, error: null, createdAt: agoIso(9 * 60 * 1000) },
+  { id: "fx-b5", bulkId: "grp-fx", mode: "reflow", status: "failed", title: "Field notebook, 1911", pageCount: null, error: "we could not read this file", createdAt: agoIso(9 * 60 * 1000) },
+  // A second solo job, ready, below the group.
+  { id: "fx-2", bulkId: null, mode: "fixed", status: "ready", title: "Mir'at al-Zaman chronicle", pageCount: 96, error: null, createdAt: agoIso(30 * 60 * 60 * 1000) },
 ];
 
 const FIXTURE_USERS = [
@@ -360,13 +371,20 @@ function renderDownloads(job) {
 // The download route needs the Firebase bearer token, so a plain link cannot
 // carry it. Fetch with the same token source api() uses, turn the response
 // into a blob, and click a throwaway object URL so the browser saves the file.
+// `button`/`wrap` are the per-format button and its error slot when a reader
+// clicks one download. The bulk "download all" path calls this without them
+// (it manages its own button and lets errors surface through the console),
+// so both are optional. Returns true on success.
 async function downloadArtifact(job, format, button, wrap) {
-  const err = wrap.querySelector(".downloads__error");
-  err.hidden = true;
-  button.disabled = true;
-  button.classList.add("is-loading");
-  const label = button.textContent;
-  button.textContent = "Preparing...";
+  const err = wrap ? wrap.querySelector(".downloads__error") : null;
+  if (err) err.hidden = true;
+  let label;
+  if (button) {
+    button.disabled = true;
+    button.classList.add("is-loading");
+    label = button.textContent;
+    button.textContent = "Preparing...";
+  }
 
   try {
     const token = await getToken();
@@ -388,14 +406,20 @@ async function downloadArtifact(job, format, button, wrap) {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
+    return true;
   } catch (e) {
     console.error("download failed", e);
-    err.textContent = "That download did not come through. Try again in a moment.";
-    err.hidden = false;
+    if (err) {
+      err.textContent = "That download did not come through. Try again in a moment.";
+      err.hidden = false;
+    }
+    return false;
   } finally {
-    button.disabled = false;
-    button.classList.remove("is-loading");
-    button.textContent = label;
+    if (button) {
+      button.disabled = false;
+      button.classList.remove("is-loading");
+      button.textContent = label;
+    }
   }
 }
 
@@ -410,6 +434,28 @@ function downloadName(job, format) {
   return `${base}.${format}`;
 }
 
+// Group jobs by bulkId while preserving the list's original order. Solo jobs
+// (no bulkId) stay solo; a bulk card is anchored at the position of its first
+// member, so the timeline stays intact.
+function groupJobs(jobs) {
+  const groups = new Map(); // bulkId -> { bulkId, jobs: [] }
+  const order = []; // entries in first-seen order: a solo job, or a group ref
+  for (const job of jobs) {
+    if (!job.bulkId) {
+      order.push({ solo: job });
+      continue;
+    }
+    let group = groups.get(job.bulkId);
+    if (!group) {
+      group = { bulkId: job.bulkId, jobs: [] };
+      groups.set(job.bulkId, group);
+      order.push({ group });
+    }
+    group.jobs.push(job);
+  }
+  return order;
+}
+
 function renderJobs(jobs) {
   jobsList.replaceChildren();
   if (jobs.length === 0) {
@@ -418,11 +464,103 @@ function renderJobs(jobs) {
   } else {
     jobsCount.hidden = false;
     jobsCount.textContent = jobs.length === 1 ? "1 edition" : `${jobs.length} editions`;
-    for (const job of jobs) {
-      jobsList.appendChild(renderJob(job));
+    for (const entry of groupJobs(jobs)) {
+      if (entry.solo) {
+        jobsList.appendChild(renderJob(entry.solo));
+      } else {
+        jobsList.appendChild(renderBulkGroup(entry.group));
+      }
     }
   }
   schedulePoll(jobs);
+}
+
+// One bulk card: a header summarising the group, then a book row per member.
+function renderBulkGroup(group) {
+  const members = group.jobs;
+  const ready = members.filter((j) => j.status === "ready");
+  const failed = members.filter((j) => j.status === "failed").length;
+  const inProgress = members.filter((j) => !TERMINAL_STATUSES.has(j.status)).length;
+
+  const card = el("article", "bulk");
+
+  const head = el("div", "bulk__head");
+  const heading = el("div", "bulk__heading");
+  const count = members.length;
+  heading.appendChild(el("h3", "bulk__title",
+    count === 1 ? "1 book uploaded together" : `${count} books uploaded together`));
+
+  // Warm, plain progress summary: only the parts that apply.
+  const summary = [];
+  if (ready.length) summary.push(`${ready.length} ready`);
+  if (inProgress) summary.push(`${inProgress} in progress`);
+  if (failed) summary.push(failed === 1 ? "1 could not be read" : `${failed} could not be read`);
+  heading.appendChild(el("p", "bulk__summary", summary.join("  ·  ")));
+  head.appendChild(heading);
+
+  if (ready.length) {
+    const allBtn = el("button", "download-btn download-btn--all",
+      ready.length === 1 ? "Download the ready book" : "Download all as separate files");
+    allBtn.type = "button";
+    allBtn.addEventListener("click", () => downloadAll(ready, allBtn));
+    head.appendChild(allBtn);
+  }
+  card.appendChild(head);
+
+  const rows = el("div", "bulk__rows");
+  for (const job of members) {
+    rows.appendChild(renderBookRow(job));
+  }
+  card.appendChild(rows);
+
+  return card;
+}
+
+// A book row inside a bulk card: title, meta, status, and per-book downloads
+// when ready. Lighter chrome than a solo job card, since the card frames them.
+function renderBookRow(job) {
+  const row = el("div", "book");
+
+  const main = el("div", "book__main");
+  main.appendChild(el("h4", "book__title", job.title || "Untitled scan"));
+
+  const meta = [];
+  if (job.pageCount) meta.push(job.pageCount === 1 ? "1 page" : `${job.pageCount} pages`);
+  if (meta.length) main.appendChild(el("p", "book__meta", meta.join("  ·  ")));
+
+  if (job.status === "failed" && job.error) {
+    main.appendChild(el("p", "book__error", sentence(job.error)));
+  }
+  if (job.status === "ready") {
+    main.appendChild(renderDownloads(job));
+  }
+  row.appendChild(main);
+
+  const chip = el("span", `status ${statusClass(job.status)}`.trim());
+  chip.appendChild(el("span", "status__dot"));
+  chip.appendChild(document.createTextNode(STATUS_LABELS[job.status] || job.status));
+  row.appendChild(chip);
+
+  return row;
+}
+
+// Download every ready book in the group, one after another. There is no
+// server-side zip yet, so this triggers several separate file downloads; the
+// button label says so. A small gap between clicks keeps the browser from
+// dropping downloads that fire too close together.
+async function downloadAll(readyJobs, button) {
+  button.disabled = true;
+  const restLabel = button.textContent;
+  button.textContent = "Preparing...";
+  try {
+    for (const job of readyJobs) {
+      await downloadArtifact(job, "epub");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = restLabel;
+  }
 }
 
 // Poll while anything is still moving; ready and failed are terminal.
@@ -687,11 +825,23 @@ function wireAdminPanel() {
 // ---------------------------------------------------------------------------
 // Upload panel
 // ---------------------------------------------------------------------------
-let selectedFile = null;
+// One or more chosen PDFs. A single file keeps the original single-upload flow
+// (optional title field). Two or more become a bulk: each book's title defaults
+// from its filename, and they share one bulkId when submitted.
+let selectedFiles = [];
+
+// Concurrency ceiling for bulk uploads: submit a few at a time rather than all
+// at once, so a large group does not hammer the worker.
+const BULK_CONCURRENCY = 3;
 
 function formatSize(bytes) {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+// A filename minus its .pdf extension, used as the default per-book title.
+function titleFromFilename(name) {
+  return (name || "").replace(/\.pdf$/i, "").trim();
 }
 
 function selectedMode() {
@@ -713,80 +863,242 @@ function hideUploadStatus() {
   uploadStatus.hidden = true;
 }
 
-function setFile(file) {
-  if (!file) return;
-  const looksPdf =
-    file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
-  if (!looksPdf) {
-    showUploadStatus("That does not look like a PDF. We read scanned PDFs only, for now.", "error");
-    return;
+// Add newly chosen PDFs to the selection, skipping non-PDFs and files already
+// picked (matched loosely by name + size). Then repaint the drop zone.
+function addFiles(fileList) {
+  const incoming = Array.from(fileList || []);
+  if (incoming.length === 0) return;
+
+  let rejected = 0;
+  for (const file of incoming) {
+    const looksPdf =
+      file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+    if (!looksPdf) {
+      rejected += 1;
+      continue;
+    }
+    const already = selectedFiles.some(
+      (f) => f.name === file.name && f.size === file.size
+    );
+    if (!already) selectedFiles.push(file);
   }
-  hideUploadStatus();
-  selectedFile = file;
-  dropZone.classList.add("has-file");
-  dropZoneLine.hidden = true;
-  dropZoneFile.hidden = false;
-  dropZoneFile.textContent = `${file.name}  ·  ${formatSize(file.size)}`;
+
+  if (rejected > 0 && selectedFiles.length === 0) {
+    showUploadStatus("Those do not look like PDFs. We read scanned PDFs only, for now.", "error");
+  } else if (rejected > 0) {
+    showUploadStatus(
+      rejected === 1
+        ? "One file was not a PDF, so we left it out."
+        : `${rejected} files were not PDFs, so we left them out.`,
+      "error"
+    );
+  } else {
+    hideUploadStatus();
+  }
+  renderSelection();
 }
 
-function clearFile() {
-  selectedFile = null;
+function removeFileAt(index) {
+  selectedFiles.splice(index, 1);
+  renderSelection();
+}
+
+function clearFiles() {
+  selectedFiles = [];
   fileInput.value = "";
-  dropZone.classList.remove("has-file");
-  dropZoneLine.hidden = false;
-  dropZoneFile.hidden = true;
-  dropZoneFile.textContent = "";
+  renderSelection();
+}
+
+// Paints the drop zone, the queue list, and the title field to match the
+// current selection. Single file: original single-file look, title field on.
+// Two or more: the queue list appears and the title field hides.
+function renderSelection() {
+  const count = selectedFiles.length;
+  const isBulk = count >= 2;
+
+  dropZone.classList.toggle("has-file", count === 1);
+  if (count === 1) {
+    const file = selectedFiles[0];
+    dropZoneLine.hidden = true;
+    dropZoneFile.hidden = false;
+    dropZoneFile.textContent = `${file.name}  ·  ${formatSize(file.size)}`;
+  } else {
+    dropZoneLine.hidden = false;
+    dropZoneFile.hidden = true;
+    dropZoneFile.textContent = "";
+  }
+
+  titleField.hidden = isBulk;
+  queueList.hidden = !isBulk;
+  if (isBulk) {
+    queueCount.textContent = `${count} books ready to convert`;
+    queueFiles.replaceChildren();
+    selectedFiles.forEach((file, index) => {
+      const item = el("li", "queue__file");
+      const info = el("div", "queue__info");
+      info.appendChild(el("span", "queue__name", titleFromFilename(file.name) || file.name));
+      info.appendChild(el("span", "queue__size", formatSize(file.size)));
+      item.appendChild(info);
+
+      const remove = el("button", "queue__remove");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `Remove ${file.name}`);
+      remove.innerHTML =
+        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+      remove.addEventListener("click", () => removeFileAt(index));
+      item.appendChild(remove);
+
+      queueFiles.appendChild(item);
+    });
+  }
+}
+
+function showUploadProgress(done, total) {
+  uploadProgress.hidden = false;
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  uploadProgressBar.style.width = `${pct}%`;
+  uploadProgressText.textContent = `Uploading ${Math.min(done + 1, total)} of ${total}...`;
+}
+
+function hideUploadProgress() {
+  uploadProgress.hidden = true;
+  uploadProgressBar.style.width = "0%";
+}
+
+// Upload one file: POST the bytes (optionally with a bulk id), then start it.
+// Returns { ok } on success, or { stop } with a warm message when the balance
+// runs out (402), so the caller can stop launching further books.
+async function uploadOne(file, mode, bulkId) {
+  const params = new URLSearchParams({ mode });
+  const title = bulkId ? titleFromFilename(file.name) : jobTitle.value.trim();
+  if (title) params.set("title", title);
+  if (bulkId) params.set("bulk", bulkId);
+
+  const job = await api(`/api/jobs?${params.toString()}`, {
+    method: "POST",
+    headers: { "content-type": "application/pdf" },
+    body: file,
+  });
+
+  try {
+    await api(`/api/jobs/${job.id}/start`, { method: "POST" });
+    return { ok: true };
+  } catch (err) {
+    if (err.status === 402) {
+      const balance =
+        currentBalance == null ? "" : ` Your balance is ${currentBalance.toFixed(1)} credits.`;
+      return { stop: true, message: `${sentence(err.message)}.${balance}` };
+    }
+    throw err;
+  }
 }
 
 async function submitUpload() {
   hideUploadStatus();
-  if (!selectedFile) {
+  if (selectedFiles.length === 0) {
     showUploadStatus("Choose a PDF first, then we can begin.", "error");
     return;
   }
 
+  const files = selectedFiles.slice();
+  const mode = selectedMode();
+  const isBulk = files.length >= 2;
+  const bulkId = isBulk ? crypto.randomUUID() : null;
+
   uploadButton.disabled = true;
   const restLabel = uploadButton.textContent;
-  uploadButton.textContent = "Uploading your scan...";
+  uploadButton.textContent = isBulk ? "Uploading your books..." : "Uploading your scan...";
 
-  try {
-    const params = new URLSearchParams({
-      mode: selectedMode(),
-    });
-    const title = jobTitle.value.trim();
-    if (title) params.set("title", title);
-
-    const job = await api(`/api/jobs?${params.toString()}`, {
-      method: "POST",
-      headers: { "content-type": "application/pdf" },
-      body: selectedFile,
-    });
-
+  // Single file keeps the original, quieter flow (no progress bar).
+  if (!isBulk) {
     try {
-      await api(`/api/jobs/${job.id}/start`, { method: "POST" });
-      showUploadStatus("Your scan is in. We are reading the pages now.");
-      clearFile();
-      jobTitle.value = "";
-    } catch (err) {
-      if (err.status === 402) {
-        // e.g. "Not enough credits for this document. Your balance is 3.4 credits."
-        const balance =
-          currentBalance == null ? "" : ` Your balance is ${currentBalance.toFixed(1)} credits.`;
-        showUploadStatus(`${sentence(err.message)}.${balance}`, "error");
+      const result = await uploadOne(files[0], mode, null);
+      if (result.stop) {
+        showUploadStatus(result.message, "error");
       } else {
-        showUploadStatus(`${sentence(err.message)}.`, "error");
+        showUploadStatus("Your scan is in. We are reading the pages now.");
+        clearFiles();
+        jobTitle.value = "";
+      }
+    } catch (err) {
+      // 400, 402 (from POST /jobs), 413 arrive here with the server's envelope.
+      showUploadStatus(`${sentence(err.message)}.`, "error");
+    } finally {
+      await refreshJobs();
+      await refreshMe();
+      uploadButton.disabled = false;
+      uploadButton.textContent = restLabel;
+    }
+    return;
+  }
+
+  // Bulk: submit with bounded concurrency. A shared cursor hands each worker
+  // the next file; the moment a 402 (or hard error) lands, we stop handing out
+  // new files, so books already submitted keep going but no new ones start.
+  let done = 0;
+  let started = 0;
+  let stopped = null; // set to the warm message when credits run out
+  let hadError = false;
+  let cursor = 0;
+  const total = files.length;
+  showUploadProgress(0, total);
+
+  async function worker() {
+    while (true) {
+      if (stopped) return;
+      const index = cursor;
+      if (index >= total) return;
+      cursor += 1;
+      const file = files[index];
+      try {
+        const result = await uploadOne(file, mode, bulkId);
+        if (result.stop) {
+          stopped = result.message;
+          return;
+        }
+        started += 1;
+      } catch (err) {
+        hadError = true;
+        console.error("bulk upload failed for a book", err);
+      } finally {
+        done += 1;
+        showUploadProgress(done, total);
       }
     }
-
-    await refreshJobs();
-    await refreshMe();
-  } catch (err) {
-    // 400 and 413 arrive here with the server's envelope message.
-    showUploadStatus(`${sentence(err.message)}.`, "error");
-  } finally {
-    uploadButton.disabled = false;
-    uploadButton.textContent = restLabel;
   }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(BULK_CONCURRENCY, total); i += 1) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+
+  hideUploadProgress();
+
+  if (stopped) {
+    const kept = started === 1 ? "1 book is on its way" : `${started} books are on their way`;
+    showUploadStatus(`${stopped} ${kept}; the rest were not started.`, "error");
+  } else if (hadError && started === 0) {
+    showUploadStatus("We could not start these books. Try again in a moment.", "error");
+  } else if (hadError) {
+    showUploadStatus(
+      `${started} of ${total} books are in. Some did not go through; try those again.`,
+      "error"
+    );
+  } else {
+    showUploadStatus(
+      started === 1
+        ? "Your book is in. We are reading the pages now."
+        : `All ${started} books are in. We are reading the pages now.`
+    );
+    clearFiles();
+  }
+
+  await refreshJobs();
+  await refreshMe();
+  uploadButton.disabled = false;
+  uploadButton.textContent = restLabel;
 }
 
 function wireUploadPanel() {
@@ -797,7 +1109,7 @@ function wireUploadPanel() {
       fileInput.click();
     }
   });
-  fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
+  fileInput.addEventListener("change", () => addFiles(fileInput.files));
 
   dropZone.addEventListener("dragover", (event) => {
     event.preventDefault();
@@ -807,8 +1119,10 @@ function wireUploadPanel() {
   dropZone.addEventListener("drop", (event) => {
     event.preventDefault();
     dropZone.classList.remove("is-drag");
-    setFile(event.dataTransfer?.files?.[0]);
+    addFiles(event.dataTransfer?.files);
   });
+
+  queueClear.addEventListener("click", clearFiles);
 
   for (const radio of document.querySelectorAll('input[name="job-mode"]')) {
     radio.addEventListener("change", updateRateNote);

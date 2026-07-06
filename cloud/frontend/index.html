@@ -115,7 +115,7 @@
           <p class="panel__sub">Upload a scanned PDF and choose how you want it back.</p>
 
           <div id="drop-zone" class="dropzone" role="button" tabindex="0"
-               aria-label="Choose a PDF, or drop one here">
+               aria-label="Choose one or more PDFs, or drop them here">
             <svg class="dropzone__icon" viewBox="0 0 24 24" width="28" height="28" fill="none"
                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
                  aria-hidden="true" focusable="false">
@@ -124,12 +124,21 @@
               <path d="M12 16.5v-5"/>
               <path d="M9.75 13.75 12 11.5l2.25 2.25"/>
             </svg>
-            <p class="dropzone__line" id="drop-zone-line"><strong>Drop your PDF here</strong>, or browse for it</p>
+            <p class="dropzone__line" id="drop-zone-line"><strong>Drop your PDFs here</strong>, or browse for them</p>
             <p class="dropzone__file" id="drop-zone-file" hidden></p>
-            <input id="file-input" type="file" accept="application/pdf,.pdf" hidden>
+            <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
           </div>
 
-          <div class="upload__field">
+          <div id="queue-list" class="queue" hidden>
+            <div class="queue__head">
+              <span id="queue-count" class="queue__count"></span>
+              <button id="queue-clear" class="queue__clear" type="button">Clear all</button>
+            </div>
+            <ul id="queue-files" class="queue__files"></ul>
+            <p class="queue__note">Each book keeps its filename as its title. The edition below applies to all of them.</p>
+          </div>
+
+          <div id="title-field" class="upload__field">
             <label class="field-label" for="job-title">Title</label>
             <input id="job-title" class="field" type="text" maxlength="200"
                    placeholder="What should we call this book?" autocomplete="off">
@@ -158,6 +167,11 @@
           <div class="upload__actions">
             <button id="upload-button" class="btn btn--primary" type="button">Create my edition</button>
             <p class="upload__rate">You'll pay <strong id="rate-per-page">0.9</strong> credits per page, held when the scan starts.</p>
+          </div>
+
+          <div id="upload-progress" class="upload-progress" role="status" hidden>
+            <div class="upload-progress__track"><span id="upload-progress-bar" class="upload-progress__bar"></span></div>
+            <p id="upload-progress-text" class="upload-progress__text"></p>
           </div>
 
           <p id="upload-status" class="upload-status" role="status" hidden></p>
