@@ -35,8 +35,14 @@ code (`src/pdf2fxl/`) is reused as a library, untouched; its 82 fast tests keep 
 
 ## 3. Users, auth, admin
 
-- **Firebase Auth** on the client: Google sign in and email/password. The SPA sends
-  the Firebase ID token as a Bearer header on every API call.
+- **Firebase Auth** on the client: Google sign in and **email magic link only**
+  (passwordless; decided 2026-07-06 to avoid password reset and recovery
+  workflows entirely). No password UI anywhere. The SPA sends the Firebase ID
+  token as a Bearer header on every API call. Magic link sign ins arrive with
+  email_verified true, which the API requires.
+- Firebase project: `thothica-ocr` (created 2026-07-06). Email provider is set
+  passwordless via the Identity Toolkit API; authorized domains include
+  ocrwithai.com and the workers.dev host.
 - The Worker verifies tokens against Google public JWKS (cached); no server SDK
   needed. First verified request upserts the D1 user row.
 - **adnan@thothica.com is admin** (seeded). Admin capability is a D1 flag
