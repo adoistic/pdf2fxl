@@ -33,7 +33,7 @@ const artifacts: Awaited<ReturnType<ProcessFn>> = {
 const stubProcess: ProcessFn = async () => artifacts;
 
 describe("finalizeJob", () => {
-  it("happy path: stores artifacts, captures the hold, marks ready, deletes upload", async () => {
+  it("happy path: stores artifacts, captures the hold, marks ready, keeps the upload", async () => {
     const { userId, jobId, uploadKey } = await processingJob();
     expect(await getBalanceMcr(env.DB, userId)).toBe(11_000); // 20k - 9k hold
 
@@ -61,8 +61,9 @@ describe("finalizeJob", () => {
 
     // Hold captured: the negative hold stands as the final charge, balance stays.
     expect(await getBalanceMcr(env.DB, userId)).toBe(11_000);
-    // Original upload deleted.
-    expect(await env.STORE.get(uploadKey)).toBeNull();
+    // Original kept for ~72h after the result (R2 lifecycle expires it), so a bad
+    // render can be reprocessed.
+    expect(await (await env.STORE.get(uploadKey))!.text()).toBe("%PDF-fake");
   });
 
   it("process throws: fails the job, releases the hold, keeps the upload", async () => {

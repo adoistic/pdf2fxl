@@ -109,7 +109,8 @@ export async function finalizeJob(
 
     if (job.holdId != null) await captureHold(env.DB, job.holdId);
     await transition(env.DB, jobId, "processing", "ready");
-    await env.STORE.delete(job.r2UploadKey!);
+    // Keep the original for ~72h after the result so a bad render can be
+    // reprocessed; an R2 lifecycle rule on the uploads/ prefix expires it.
     return "ready";
   } catch (err) {
     await failJob(
