@@ -46,3 +46,4 @@ app.use("/api/admin/*", authRequired, adminRequired);
 app.route("/api/admin", admin);
 
 export default app;
+export { OcrEngine } from "./container";
