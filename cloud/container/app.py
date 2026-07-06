@@ -51,6 +51,10 @@ _OCR_MODEL = "mistral-ocr-latest"
 # so a thread pool parallelizes them cleanly.
 _OCR_CONCURRENCY = 10
 
+# Rasterization resolution for reflow. Lower than the engine's 300 DPI to bound
+# per-job memory (the heading maths is scale invariant, OCR is fine at 150).
+_PROCESS_DPI = 150
+
 
 def _process_ocr(image_bgr, cfg: Config, api_key: str) -> dict:
     """One realtime OCR call for a single page image, with bounding blocks.
@@ -126,6 +130,11 @@ async def process(request: Request) -> dict:
         raise HTTPException(status_code=422, detail="unreadable pdf") from exc
 
     cfg = Config(mode=mode)
+    # Rasterize at 150 DPI, not the engine's 300. The heading algorithm measures
+    # relative type sizes so it is scale invariant, and OCR is fine at 150; this
+    # quarters peak memory so a 200-page book fits a small container and thousands
+    # of jobs can run concurrently.
+    cfg.zoom = _PROCESS_DPI / 72.0
     # Only Markdown is needed from /process; doc.json is written unconditionally by
     # the engine. EPUB/DOCX render on demand later via /render, so skip them here.
     cfg.reflow_formats = ("md",)
