@@ -969,17 +969,42 @@ function hideUploadProgress() {
 // Upload one file: POST the bytes (optionally with a bulk id), then start it.
 // Returns { ok } on success, or { stop } with a warm message when the balance
 // runs out (402), so the caller can stop launching further books.
+// Public config (whether direct-to-R2 uploads are active), fetched once.
+let _appConfig = null;
+async function getAppConfig() {
+  if (!_appConfig) {
+    try {
+      _appConfig = await (await fetch("/api/config")).json();
+    } catch {
+      _appConfig = { r2Direct: false };
+    }
+  }
+  return _appConfig;
+}
+
 async function uploadOne(file, mode, bulkId) {
   const params = new URLSearchParams({ mode });
   const title = bulkId ? titleFromFilename(file.name) : jobTitle.value.trim();
   if (title) params.set("title", title);
   if (bulkId) params.set("bulk", bulkId);
 
-  const job = await api(`/api/jobs?${params.toString()}`, {
-    method: "POST",
-    headers: { "content-type": "application/pdf" },
-    body: file,
-  });
+  const cfg = await getAppConfig();
+  let job;
+  if (cfg.r2Direct) {
+    // Direct to R2: get a presigned URL and a job, then PUT the file straight to
+    // R2 so the bytes never pass through the app.
+    params.set("direct", "1");
+    job = await api(`/api/jobs?${params.toString()}`, { method: "POST" });
+    const put = await fetch(job.uploadUrl, { method: "PUT", body: file });
+    if (!put.ok) throw Object.assign(new Error("upload to storage failed"), { status: put.status });
+  } else {
+    // Streaming fallback: the app streams the body to R2 without buffering.
+    job = await api(`/api/jobs?${params.toString()}`, {
+      method: "POST",
+      headers: { "content-type": "application/pdf" },
+      body: file,
+    });
+  }
 
   try {
     await api(`/api/jobs/${job.id}/start`, { method: "POST" });
