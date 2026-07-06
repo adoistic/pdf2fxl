@@ -17,6 +17,9 @@
       "migrations_dir": "migrations"
     }
   ],
+  "r2_buckets": [
+    { "binding": "STORE", "bucket_name": "thothica-ocr" }
+  ],
   "vars": {
     "FIREBASE_PROJECT_ID": "",
     "ADMIN_EMAIL": "adnan@thothica.com"

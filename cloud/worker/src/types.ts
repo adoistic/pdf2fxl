@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  STORE: R2Bucket;
   FIREBASE_PROJECT_ID: string;
   ADMIN_EMAIL: string;
 }
