@@ -7,6 +7,11 @@ export interface Env {
   MISTRAL_API_KEY: string;
   FIREBASE_PROJECT_ID: string;
   ADMIN_EMAIL: string;
+  // R2 API token secrets for presigned direct-to-R2 URLs. Optional: when unset,
+  // the app falls back to streaming bytes through the Worker (still lightweight).
+  R2_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
 }
 
 export interface AppUser {

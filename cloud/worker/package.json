@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",
+    "aws4fetch": "^1.0.20",
     "hono": "^4.6.0",
     "jose": "^5.9.0"
   },

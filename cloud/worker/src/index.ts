@@ -5,6 +5,7 @@ import { getBalanceMcr, MCR_PER_CREDIT } from "./ledger";
 import { admin } from "./routes/admin";
 import { jobs } from "./routes/jobs";
 import { handleQueue } from "./finalize";
+import { r2DirectEnabled } from "./presign";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
@@ -23,6 +24,7 @@ app.get("/api/config", (c) =>
   c.json({
     productName: "Thothica OCR",
     firebaseProjectId: c.env.FIREBASE_PROJECT_ID || null,
+    r2Direct: r2DirectEnabled(c.env),
   })
 );
 
