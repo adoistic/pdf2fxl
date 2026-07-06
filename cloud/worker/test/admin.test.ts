@@ -69,6 +69,8 @@ describe("admin credits", () => {
       { email: "a@test.dev", credits: Number.NaN },
       { email: "a@test.dev" },
       {},
+      { email: "a@test.dev", credits: 0.0004 },
+      { email: "a\n b@test.dev", credits: 10 },
     ]) {
       const res = await post("/api/admin/credits", adminToken, bad);
       expect(res.status).toBe(400);
@@ -86,5 +88,21 @@ describe("admin credits", () => {
     const body = (await res.json()) as { users: { email: string; balance: number }[] };
     const target = body.users.find((u) => u.email === "listme@test.dev");
     expect(target?.balance).toBe(42);
+  });
+
+  it("rejects unauthenticated requests outright", async () => {
+    const res = await app.request("/api/admin/users", {}, env);
+    expect(res.status).toBe(401);
+    const bare = await app.request("/api/admin", {}, env);
+    expect([401, 404]).toContain(bare.status);
+    expect(bare.status).not.toBe(200);
+  });
+
+  it("parses ledger statement ids canonically", async () => {
+    const adminHeaders = { Authorization: `Bearer ${adminToken}` };
+    for (const bad of ["1.0", "%201", "1e2", "abc"]) {
+      const res = await app.request(`/api/admin/users/${bad}/ledger`, { headers: adminHeaders }, env);
+      expect(res.status).toBe(404);
+    }
   });
 });

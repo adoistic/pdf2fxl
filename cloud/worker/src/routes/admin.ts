@@ -11,10 +11,13 @@ admin.post("/credits", async (c) => {
   const email = typeof body?.email === "string" ? body.email.toLowerCase().trim() : "";
   const credits = typeof body?.credits === "number" ? body.credits : Number.NaN;
   const note = typeof body?.note === "string" ? body.note : null;
+  const amountMcr = Math.round(credits * MCR_PER_CREDIT);
   if (
     !email.includes("@") ||
+    email.length > 254 ||
+    /\s/.test(email) ||
     !Number.isFinite(credits) ||
-    credits === 0 ||
+    amountMcr === 0 ||
     Math.abs(credits) > 1_000_000
   ) {
     return c.json({ error: "invalid request" }, 400);
@@ -26,7 +29,7 @@ admin.post("/credits", async (c) => {
     .first<{ id: number }>();
   await allocate(c.env.DB, {
     userId: userRow!.id,
-    amountMcr: Math.round(credits * MCR_PER_CREDIT),
+    amountMcr,
     note,
     createdBy: c.get("user").email,
   });
@@ -54,8 +57,9 @@ admin.get("/users", async (c) => {
 });
 
 admin.get("/users/:id/ledger", async (c) => {
-  const userId = Number(c.req.param("id"));
-  if (!Number.isInteger(userId)) return c.json({ error: "not found" }, 404);
+  const idParam = c.req.param("id");
+  if (!/^\d+$/.test(idParam)) return c.json({ error: "not found" }, 404);
+  const userId = Number(idParam);
   const exists = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?1")
     .bind(userId)
     .first<{ id: number }>();

@@ -6,6 +6,11 @@ import { admin } from "./routes/admin";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
+app.onError((err, c) => {
+  console.error("unhandled error", err);
+  return c.json({ error: "something went wrong" }, 500);
+});
+
 app.get("/api/health", (c) => c.json({ ok: true }));
 
 app.get("/api/config", (c) =>
