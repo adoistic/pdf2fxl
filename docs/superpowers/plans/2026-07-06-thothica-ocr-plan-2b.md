@@ -50,9 +50,26 @@ Add a Queue (`ocr-jobs`) to wrangler.jsonc (producer + consumer). Extend `startJ
 
 Container `POST /render`: takes `doc.json`, figure assets, and `format` (epub|docx), returns the rendered bytes using the existing renderers. Worker `GET /api/jobs/:id/download?format=`: 404 unless the job is the caller's and `ready`; `md` streams the stored markdown directly; `epub`/`docx` fetch doc.json + figures, call `/render`, stream with a content-disposition filename from the job title (never an internal id, no vendor names in metadata). Tests inject a render stub and assert headers, ownership, and the not-ready 409. Commit.
 
-### Task 6: Frontend, downloads and richer status
+### Task 5.5: Remove the express tier, reprice reflow (backend)
 
-`cloud/frontend/app.js` + `index.html` + `ui.css`: on `ready` jobs show download buttons (EPUB, Markdown, Word) hitting the download route with the auth token (fetch + blob, since it needs the Bearer header); keep the friendly `processing` label ("Reading your pages") across the longer OCR run; keep polling. Verify with the preview fixtures at 375 and 1280. Commit.
+Single-tier pricing (Adnan, 2026-07-06). Migration `0004_pricing.sql` already sets
+`rate_reflow_mcr=900` and `express_surcharge_mcr=0`. In `src/start.ts` simplify
+`rateFor` to just the per-mode rate with no express surcharge, and stop reading the
+`express` flag for pricing (reflow 0.9, fixed 3.0). Update `test/start.test.ts`:
+reflow is 900/page, fixed 3000/page, drop the express cases. The `express` job
+column stays (harmless, always 0) to avoid a migration churn. Apply 0004 to remote
+D1 at deploy. Commit.
+
+### Task 6: Frontend, downloads, and single-tier pricing
+
+`cloud/frontend/app.js` + `index.html` + `ui.css`: (a) REMOVE the Express toggle
+entirely and any batch/express/realtime wording; the upload panel offers only the
+two editions with one price each, reflow 0.9 credits/page and fixed 3.0. Stop
+sending the `express` query param. (b) On `ready` jobs show download buttons (EPUB,
+Markdown, Word) hitting the download route with the auth token (fetch + blob, since
+it needs the Bearer header). Keep the friendly `processing` label ("Reading your
+pages") across the longer OCR run; keep polling. Never expose OCR mechanics. Verify
+with the preview fixtures at 375 and 1280. Commit.
 
 ### Task 7: Deploy and real end to end
 

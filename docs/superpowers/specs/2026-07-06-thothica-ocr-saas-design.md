@@ -56,14 +56,19 @@ code (`src/pdf2fxl/`) is reused as a library, untouched; its 82 fast tests keep 
 
 ## 4. Pricing and credits
 
-Rates are configuration (D1 table), not code:
+Rates are configuration (D1 table), not code. One price per pipeline, no tiers:
 
-| Pipeline | Batch (default) | Express |
-|---|---|---|
-| Reflow | 0.7 credits/page | 0.9 credits/page |
-| Fixed layout | 3.0 credits/page | 3.2 credits/page |
+| Pipeline | Credits/page |
+|---|---|
+| Reflow | 0.9 |
+| Fixed layout | 3.0 |
 
-Express surcharge is a flat 0.2 credits per page on either pipeline.
+Decided 2026-07-06: the batch-versus-express distinction is removed. The Mistral
+batch OCR endpoint does not return the bounding boxes the reflow geometry needs
+(verified against the live API), so all OCR runs on the realtime endpoint. That is
+an implementation detail; users never see "batch", "express", or "realtime". Reflow
+moved from 0.7 to 0.9 to cover the realtime processing; fixed layout stays at 3.0
+(already priced high). No express surcharge.
 
 **Ledger semantics.** The credit ledger is append only; a user's balance is the sum
 of their rows. Row kinds:
