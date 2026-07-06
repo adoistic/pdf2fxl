@@ -9,3 +9,5 @@ out/
 .claude/settings.local.json
 .DS_Store
 firebase-debug.log
+node_modules/
+.wrangler/

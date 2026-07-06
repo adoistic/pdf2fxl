@@ -1,0 +1,24 @@
+{
+  "name": "thothica-ocr",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "../frontend",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "thothica-ocr",
+      "database_id": "FILLED-IN-BY-TASK-10-STEP-2",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "FIREBASE_PROJECT_ID": "",
+    "ADMIN_EMAIL": "adnan@thothica.com"
+  },
+  "observability": { "enabled": true }
+}
