@@ -101,11 +101,10 @@ describe("auth", () => {
   });
 
   it("rejects tokens missing the email_verified claim", async () => {
-    // simulate by overriding to a non-true value the mock can produce
     const res = await me(
       await fb.tokenFor(
         { sub: "uid-unv2", email: "someone@test.dev" },
-        { emailVerified: false }
+        { emailVerified: "omit" }
       )
     );
     expect(res.status).toBe(401);
@@ -134,5 +133,19 @@ describe("auth", () => {
       env
     );
     expect(res.status).toBe(401);
+  });
+
+  it("never relinks a row owned by another uid, even for a verified email", async () => {
+    // Y signs in and owns the row for shared@test.dev
+    let res = await me(await fb.tokenFor({ sub: "uid-owner-y", email: "shared@test.dev" }));
+    expect(res.status).toBe(200);
+    // X arrives with a verified token for the same email (recycled mailbox)
+    res = await me(await fb.tokenFor({ sub: "uid-newcomer-x", email: "shared@test.dev" }));
+    expect(res.status).toBe(409);
+    // Y's row is untouched
+    const row = await env.DB.prepare(
+      "SELECT uid FROM users WHERE email = 'shared@test.dev'"
+    ).first<{ uid: string }>();
+    expect(row!.uid).toBe("uid-owner-y");
   });
 });

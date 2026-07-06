@@ -78,8 +78,13 @@ type UserRow = { id: number; uid: string; email: string; name: string | null; is
 // Step 1 handles every returning user, including email changes in Firebase.
 // Step 2 handles first sight of a uid: it claims a pre-allocated email row
 // (admin can grant credits to an email before the person ever signs in) or
-// creates a fresh row. email_verified has already been enforced, so linking
-// by email cannot be hijacked via an unverified signup.
+// creates a fresh row. The claim only ever applies to pre-allocated rows
+// (uid IS NULL); email_verified has already been enforced, so linking by
+// email cannot be hijacked via an unverified signup. If the conflicting row
+// is already owned by another uid (e.g. a recycled mailbox verified by a
+// different Firebase account), the claim is refused and the row is left
+// untouched -- the caller gets a 409 instead of silently inheriting someone
+// else's credits and admin flag.
 async function upsertUser(
   db: D1Database,
   identity: FirebaseIdentity,
@@ -105,6 +110,7 @@ async function upsertUser(
            uid = excluded.uid,
            name = COALESCE(excluded.name, users.name),
            is_admin = MAX(users.is_admin, excluded.is_admin)
+         WHERE users.uid IS NULL
          RETURNING id, uid, email, name, is_admin`
       )
       .bind(identity.uid, identity.email, identity.name, seedAdmin)
