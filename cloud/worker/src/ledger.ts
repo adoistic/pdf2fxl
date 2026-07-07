@@ -120,6 +120,42 @@ export async function releaseHold(db: D1Database, holdId: number): Promise<boole
   }
 }
 
+// Refund part of a settled surcharge: the emphasis add-on charges up front but
+// only earns per enriched page, so finalize returns the surcharge for pages that
+// were not enriched. Represented as a positive 'allocation' row by 'system'
+// (the ledger has no 'refund' kind and rebuilding the money table is not worth
+// the risk). Two guards make it correct:
+//   - EXISTS(capture for the hold): only refund a hold that was CAPTURED. If the
+//     hold was released instead (job failed/cancelled), the full amount incl. the
+//     surcharge was already returned, so a second refund would double-pay.
+//   - NOT EXISTS(prior system refund for the job) + the ux_ledger_system_refund
+//     unique index: fires at most once, surviving finalize retries and a crash
+//     between capture and this insert.
+export async function refundSurcharge(
+  db: D1Database,
+  opts: { userId: number; jobId: string; holdId: number; amountMcr: number; note: string }
+): Promise<boolean> {
+  if (!Number.isSafeInteger(opts.amountMcr) || opts.amountMcr <= 0) return false;
+  try {
+    const res = await db
+      .prepare(
+        `INSERT INTO credit_ledger (user_id, kind, amount_mcr, job_id, note, created_by)
+         SELECT ?1, 'allocation', ?2, ?3, ?4, 'system'
+         WHERE EXISTS (SELECT 1 FROM credit_ledger WHERE ref_id = ?5 AND kind = 'capture')
+           AND NOT EXISTS (SELECT 1 FROM credit_ledger
+                           WHERE job_id = ?3 AND kind = 'allocation' AND created_by = 'system')`
+      )
+      .bind(opts.userId, opts.amountMcr, opts.jobId, opts.note, opts.holdId)
+      .run();
+    return res.meta.changes === 1;
+  } catch (err) {
+    // The unique index backstops true concurrency; a violation means another
+    // finalize already refunded this job.
+    if (String(err).includes("UNIQUE constraint failed: credit_ledger.job_id")) return false;
+    throw err;
+  }
+}
+
 export type Settlement = { kind: "capture" | "release"; id: number } | null;
 
 // How a hold was settled, if at all. This is the disambiguation the comments

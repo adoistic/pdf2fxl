@@ -6,6 +6,7 @@ import { admin } from "./routes/admin";
 import { jobs } from "./routes/jobs";
 import { handleQueue } from "./finalize";
 import { r2DirectEnabled } from "./presign";
+import { enrichConfig } from "./enrich";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
@@ -20,13 +21,15 @@ app.notFound((c) => c.json({ error: "not found" }, 404));
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
-app.get("/api/config", (c) =>
-  c.json({
+app.get("/api/config", async (c) => {
+  const enrich = await enrichConfig(c.env);
+  return c.json({
     productName: "Thothica OCR",
     firebaseProjectId: c.env.FIREBASE_PROJECT_ID || null,
     r2Direct: r2DirectEnabled(c.env),
-  })
-);
+    enrich: { available: enrich.available, rateCredits: enrich.rateCredits },
+  });
+});
 
 app.use("/api/me", authRequired);
 app.get("/api/me", async (c) => {

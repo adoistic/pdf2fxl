@@ -1,7 +1,8 @@
 import type { Env } from "./types";
-import { captureHold, releaseHold } from "./ledger";
+import { captureHold, releaseHold, refundSurcharge } from "./ledger";
 import { failJob, transition, type Job } from "./jobs";
 import { r2DirectEnabled, presignGet } from "./presign";
+import { enrichConfig } from "./enrich";
 
 // The container call is injected so tests need no container or Mistral: the
 // queue handler passes the real container fetch, tests pass a stub returning
@@ -23,11 +24,14 @@ export type ProcessFn = (
   doc_json: unknown;
   markdown: string;
   figures: { name: string; base64: string }[];
+  // Present only when the emphasis add-on ran. pages_enriched drives the
+  // per-page surcharge refund at finalize.
+  enrich?: { requested: boolean; pages_total: number; pages_enriched: number };
 }>;
 
 type FinalizeRow = {
-  id: string; user_id: number; mode: Job["mode"]; express: number; status: Job["status"];
-  title: string | null; page_count: number | null; rate_mcr: number | null;
+  id: string; user_id: number; mode: Job["mode"]; express: number; enrich: number; status: Job["status"];
+  title: string | null; page_count: number | null; rate_mcr: number | null; enrich_rate_mcr: number | null;
   hold_id: number | null; r2_upload_key: string | null; error_public: string | null;
   created_at: string;
 };
@@ -35,7 +39,8 @@ type FinalizeRow = {
 function toJob(r: FinalizeRow): Job {
   return {
     id: r.id, userId: r.user_id, bulkId: null, mode: r.mode, express: r.express === 1,
-    status: r.status, title: r.title, pageCount: r.page_count, rateMcr: r.rate_mcr,
+    enrich: r.enrich === 1, status: r.status, title: r.title, pageCount: r.page_count,
+    rateMcr: r.rate_mcr, enrichRateMcr: r.enrich_rate_mcr,
     holdId: r.hold_id, r2UploadKey: r.r2_upload_key, errorPublic: r.error_public,
     createdAt: r.created_at,
   };
@@ -60,8 +65,8 @@ export async function finalizeJob(
 ): Promise<"ready" | "failed" | "skipped"> {
   const row = await env.DB
     .prepare(
-      `SELECT id, user_id, mode, express, status, title, page_count, rate_mcr,
-              hold_id, r2_upload_key, error_public, created_at
+      `SELECT id, user_id, mode, express, enrich, status, title, page_count, rate_mcr,
+              enrich_rate_mcr, hold_id, r2_upload_key, error_public, created_at
        FROM jobs WHERE id = ?1`
     )
     .bind(jobId)
@@ -131,7 +136,24 @@ export async function finalizeJob(
       return "skipped";
     }
 
-    if (job.holdId != null) await captureHold(env.DB, job.holdId);
+    if (job.holdId != null) {
+      await captureHold(env.DB, job.holdId);
+      // Per-page surcharge refund: the emphasis add-on charged up front but only
+      // earns per enriched page. Uses the snapshot enrich_rate_mcr (never live
+      // config) so hold and refund agree; NaN-safe if the summary is missing.
+      const surcharge = job.enrichRateMcr ?? 0;
+      if (surcharge > 0) {
+        const total = job.pageCount ?? 0;
+        const enriched = Math.max(0, Math.min(total, Number(out.enrich?.pages_enriched ?? 0)));
+        const refundMcr = surcharge * (total - enriched);
+        if (refundMcr > 0) {
+          await refundSurcharge(env.DB, {
+            userId: job.userId, jobId, holdId: job.holdId, amountMcr: refundMcr,
+            note: `emphasis surcharge refund: ${total - enriched}/${total} pages`,
+          });
+        }
+      }
+    }
     await transition(env.DB, jobId, "processing", "ready");
     // Keep the original for ~72h after the result so a bad render can be
     // reprocessed; an R2 lifecycle rule on the uploads/ prefix expires it.
@@ -157,13 +179,25 @@ function realProcess(env: Env): ProcessFn {
     // R2-direct: pass the presigned url and send no body; the container fetches
     // the PDF from R2 itself. Fallback: stream the bytes as the request body.
     if (input.kind === "url") qs.set("input_url", input.inputUrl);
+    const headers: Record<string, string> = {
+      "content-type": "application/pdf",
+      "x-mistral-key": env.MISTRAL_API_KEY,
+    };
+    // Emphasis add-on: only send it when the job opted in AND it is fully
+    // configured now. If not, the container skips the pass and the surcharge is
+    // refunded in full at capture.
+    if (job.enrich) {
+      const enrich = await enrichConfig(env);
+      if (enrich.available) {
+        qs.set("enrich", "1");
+        qs.set("enrich_model", enrich.model);
+        headers["x-openrouter-key"] = env.OPENROUTER_API_KEY!;
+      }
+    }
     const res = await engine.fetch(
       new Request(`http://engine/process?${qs.toString()}`, {
         method: "POST",
-        headers: {
-          "content-type": "application/pdf",
-          "x-mistral-key": env.MISTRAL_API_KEY,
-        },
+        headers,
         body: input.kind === "url" ? undefined : input.body,
       })
     );

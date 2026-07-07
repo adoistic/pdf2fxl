@@ -4,6 +4,7 @@ import { createJob, getJobForUser, listJobsForUser, type Job, type JobMode } fro
 import { startJob, countJob, type EnginePrepare } from "../start";
 import { buildDownload, type RenderFn } from "../download";
 import { r2DirectEnabled, presignPut } from "../presign";
+import { enrichConfig } from "../enrich";
 
 // Send a PDF to the container's /prepare and return its page count. Shared by
 // the count and start routes; injected as a stub in tests.
@@ -32,8 +33,9 @@ export const jobs = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
 function publicJob(j: Job) {
   return {
-    id: j.id, bulkId: j.bulkId, mode: j.mode, express: j.express, status: j.status, title: j.title,
-    pageCount: j.pageCount, error: j.errorPublic, createdAt: j.createdAt,
+    id: j.id, bulkId: j.bulkId, mode: j.mode, express: j.express, enrich: j.enrich,
+    status: j.status, title: j.title, pageCount: j.pageCount, error: j.errorPublic,
+    createdAt: j.createdAt,
   };
 }
 
@@ -44,8 +46,14 @@ jobs.post("/", async (c) => {
   // Optional bulk-group id: many books uploaded together share one bulkId so the
   // front end can group them. Bounded to a uuid-ish token.
   const bulkId = c.req.query("bulk")?.slice(0, 64) || null;
+  // Emphasis enrichment add-on (+0.2/page). Reject early if the box was checked
+  // but the add-on is not configured, so it never silently no-ops.
+  const enrich = c.req.query("enrich") === "1";
   if (mode !== "reflow" && mode !== "fixed") {
     return c.json({ error: "mode must be reflow or fixed" }, 400);
+  }
+  if (enrich && !(await enrichConfig(c.env)).available) {
+    return c.json({ error: "the emphasis add-on is not available right now" }, 409);
   }
   const declared = Number(c.req.header("content-length") ?? "0");
   if (declared > MAX_UPLOAD_BYTES) {
@@ -62,7 +70,7 @@ jobs.post("/", async (c) => {
       return c.json({ error: "direct upload is not available" }, 409);
     }
     const job = await createJob(c.env.DB, {
-      id, userId: user.id, bulkId, mode: mode as JobMode, express: false, title, r2UploadKey: key,
+      id, userId: user.id, bulkId, mode: mode as JobMode, express: false, enrich, title, r2UploadKey: key,
     });
     const uploadUrl = await presignPut(c.env, key, 900);
     return c.json({ ...publicJob(job), uploadUrl });
@@ -78,7 +86,7 @@ jobs.post("/", async (c) => {
   // /prepare at start, which returns a clean "we could not read this file".
   await c.env.STORE.put(key, body, { httpMetadata: { contentType: "application/pdf" } });
   const job = await createJob(c.env.DB, {
-    id, userId: user.id, bulkId, mode: mode as JobMode, express: false, title, r2UploadKey: key,
+    id, userId: user.id, bulkId, mode: mode as JobMode, express: false, enrich, title, r2UploadKey: key,
   });
   return c.json(publicJob(job));
 });

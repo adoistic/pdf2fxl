@@ -26,6 +26,14 @@ async function rateFor(db: D1Database, mode: string): Promise<number> {
   return Number(row?.value);
 }
 
+// Per-page surcharge for the emphasis add-on (0 when the job did not opt in).
+async function enrichRateFor(db: D1Database): Promise<number> {
+  const row = await db
+    .prepare("SELECT value FROM config WHERE key = 'rate_enrich_mcr'")
+    .first<{ value: string }>();
+  return Number(row?.value);
+}
+
 export async function startJob(
   db: D1Database,
   store: R2Bucket,
@@ -65,12 +73,18 @@ export async function startJob(
   }
 
   const rateMcr = await rateFor(db, job.mode);
-  const amountMcr = rateMcr * pageCount;
-  if (!Number.isSafeInteger(rateMcr) || rateMcr <= 0 || !Number.isSafeInteger(amountMcr) || amountMcr <= 0) {
+  // Surcharge: reuse the snapshot from count when present, else the live rate
+  // (single-file start skips count). The same value is both held and stored, so
+  // the hold and any later refund always agree.
+  const enrichRateMcr = job.enrich ? (job.enrichRateMcr ?? await enrichRateFor(db)) : 0;
+  const amountMcr = (rateMcr + enrichRateMcr) * pageCount;
+  if (!Number.isSafeInteger(rateMcr) || rateMcr <= 0
+      || !Number.isSafeInteger(enrichRateMcr) || enrichRateMcr < 0
+      || !Number.isSafeInteger(amountMcr) || amountMcr <= 0) {
     await failJob(
       db, jobId, "preparing",
       "something went wrong on our side, please try again later",
-      `bad pricing: rate ${rateMcr}, pages ${pageCount}`
+      `bad pricing: rate ${rateMcr}, surcharge ${enrichRateMcr}, pages ${pageCount}`
     );
     return { ok: false, reason: "engine_error" };
   }
@@ -88,7 +102,7 @@ export async function startJob(
   }
 
   const promoted = await transition(db, jobId, "preparing", "processing", {
-    page_count: pageCount, rate_mcr: rateMcr, hold_id: hold.holdId,
+    page_count: pageCount, rate_mcr: rateMcr, enrich_rate_mcr: enrichRateMcr, hold_id: hold.holdId,
   });
   if (!promoted) {
     // Someone else moved the job (e.g. a future stale-sweep). Do not keep a
@@ -103,14 +117,14 @@ export async function startJob(
 // on status='received' and page_count IS NULL so it is idempotent and never
 // overwrites a job already in flight.
 async function recordCount(
-  db: D1Database, jobId: string, userId: number, pageCount: number, rateMcr: number
+  db: D1Database, jobId: string, userId: number, pageCount: number, rateMcr: number, enrichRateMcr: number
 ): Promise<boolean> {
   const res = await db
     .prepare(
-      `UPDATE jobs SET page_count = ?1, rate_mcr = ?2, updated_at = datetime('now')
-       WHERE id = ?3 AND user_id = ?4 AND status = 'received' AND page_count IS NULL`
+      `UPDATE jobs SET page_count = ?1, rate_mcr = ?2, enrich_rate_mcr = ?3, updated_at = datetime('now')
+       WHERE id = ?4 AND user_id = ?5 AND status = 'received' AND page_count IS NULL`
     )
-    .bind(pageCount, rateMcr, jobId, userId)
+    .bind(pageCount, rateMcr, enrichRateMcr, jobId, userId)
     .run();
   return res.meta.changes === 1;
 }
@@ -129,9 +143,11 @@ export async function countJob(
   const job = await getJobForUser(db, jobId, userId);
   if (!job) return { ok: false, reason: "not_found" };
   if (job.pageCount != null && job.rateMcr != null) {
+    // Total per-page cost includes the emphasis surcharge snapshotted at count.
+    const totalMcr = job.rateMcr + (job.enrichRateMcr ?? 0);
     return {
       ok: true, pageCount: job.pageCount, rateMcr: job.rateMcr,
-      creditsMcr: job.rateMcr * job.pageCount,
+      creditsMcr: totalMcr * job.pageCount,
     };
   }
   if (job.status !== "received") return { ok: false, reason: "not_countable" };
@@ -151,12 +167,14 @@ export async function countJob(
   }
 
   const rateMcr = await rateFor(db, job.mode);
-  if (!Number.isSafeInteger(rateMcr) || rateMcr <= 0) {
+  const enrichRateMcr = job.enrich ? await enrichRateFor(db) : 0;
+  if (!Number.isSafeInteger(rateMcr) || rateMcr <= 0
+      || !Number.isSafeInteger(enrichRateMcr) || enrichRateMcr < 0) {
     await failJob(db, jobId, "received",
       "something went wrong on our side, please try again later",
-      `bad rate ${rateMcr}`);
+      `bad rate ${rateMcr}/${enrichRateMcr}`);
     return { ok: false, reason: "engine_error" };
   }
-  await recordCount(db, jobId, userId, pageCount, rateMcr);
-  return { ok: true, pageCount, rateMcr, creditsMcr: rateMcr * pageCount };
+  await recordCount(db, jobId, userId, pageCount, rateMcr, enrichRateMcr);
+  return { ok: true, pageCount, rateMcr, creditsMcr: (rateMcr + enrichRateMcr) * pageCount };
 }
