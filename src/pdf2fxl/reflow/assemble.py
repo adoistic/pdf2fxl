@@ -6,11 +6,26 @@ import cv2
 
 from .segment import Segment, is_heading_type
 from .typesize import measure_segment, detect_weight_centering
-from .hierarchy import body_size, assign_levels
+from .hierarchy import (body_size, assign_levels, finalize_line_sizes,
+                        body_line_size)
 from .layout import (detect_columns, strip_running, order_segments,
                      merge_dropcaps, rejoin_paragraphs, clean_headings)
 from .crop import crop_region, width_frac, classify_image
+from .inline_md import parse_inline_md, strip_inline_md
 from .docmodel import (Doc, Heading, Paragraph, Run, Figure, Table, ChapterBreak)
+
+
+def _col_w_of(per_page, pages):
+    """Return a callable seg -> column width (page px): half page width when that
+    page has a second reading column, else full width. Mirrors build_doc's own
+    col_w computation, so heading span is scored against the right measure."""
+    two_col = {pi: any(x.column == 1 for x in segs)
+               for pi, segs in enumerate(per_page)}
+
+    def _f(s: Segment) -> float:
+        w = pages[s.page_index].page_size[0]
+        return w / 2 if two_col.get(s.page_index) else w
+    return _f
 
 
 @dataclass
@@ -49,9 +64,11 @@ def build_doc(pages: List[PageInput], title: str, language: str,
     per_page = strip_running(per_page, page_height=ph)
 
     flat: List[Segment] = [s for page in per_page for s in page]
-    body_px = body_size(flat)
-    clean_headings(flat)   # strip trailing page numbers; demote TOC lines to text
-    assign_levels(flat)
+    finalize_line_sizes(flat)                 # fill s.line_px (content-invariant size proxy)
+    body_px = body_size(flat)                 # UNCHANGED: dropcap uses this (size_px units)
+    body_line = body_line_size(flat)          # dominant body line-pitch (line_px units)
+    clean_headings(flat)                      # strip page numbers; demote TOC lines BEFORE leveling
+    assign_levels(flat, body_px=body_line, col_w_of=_col_w_of(per_page, pages))
     ordered = order_segments(flat)
     ordered = merge_dropcaps(ordered, body_px=body_px)
     ordered = rejoin_paragraphs(ordered)
@@ -81,7 +98,7 @@ def build_doc(pages: List[PageInput], title: str, language: str,
         elif is_heading_type(s.type):
             if s.level == 1:
                 nodes.append(ChapterBreak())
-            nodes.append(Heading(level=max(1, s.level), text=s.text))
+            nodes.append(Heading(level=max(1, s.level), text=strip_inline_md(s.text)))
         else:
-            nodes.append(Paragraph(runs=[Run(text=s.text, bold=s.bold)]))
+            nodes.append(Paragraph(runs=parse_inline_md(s.text, base_bold=s.bold)))
     return Doc(title=title, language=language, nodes=nodes)

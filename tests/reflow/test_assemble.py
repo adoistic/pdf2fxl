@@ -46,3 +46,21 @@ def test_build_doc_strips_page_number_and_demotes_toc(tmp_path):
     assert "5 The Holobiont" in headings
     assert not any("Holobiont 51" in t for t in headings)
     assert not any("Gene-Focused" in t for t in headings)  # demoted to text
+
+
+def test_build_doc_wires_inline_markdown(tmp_path):
+    """Inline markdown emphasis from OCR must become styled runs / stripped heading
+    text -- not literal asterisks in the output (Adnan's screenshot bug)."""
+    img = _text_img()
+    segs = [
+        Segment(0, "title", (20, 10, 260, 24), "**Chapter** One"),
+        Segment(0, "text", (20, 80, 260, 60),
+                "Automation reduces tasks and *speeds* the review."),
+    ]
+    doc = build_doc([PageInput(img, (300, 400), segs)],
+                    title="T", language="en", assets_dir=tmp_path)
+    h = next(n for n in doc.nodes if isinstance(n, Heading))
+    assert h.text == "Chapter One"                          # heading markers stripped
+    para = next(n for n in doc.nodes if isinstance(n, Paragraph))
+    assert "*" not in "".join(r.text for r in para.runs)    # inline markers removed
+    assert any(r.italic and r.text == "speeds" for r in para.runs)   # italic applied

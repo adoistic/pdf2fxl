@@ -123,3 +123,59 @@ def test_recurring_unnumbered_heading_is_not_a_chapter():
     assert len(set(refs)) == 1, f"recurring 'References' got inconsistent levels: {refs}"
     # real numbered chapters are untouched
     assert [s.level for s in segs if s.text.startswith("1. Chapter")] == [1]
+
+
+# --- holistic (no-numbering) leveling: size + verbosity, not size alone ---------
+def _hl(line, text, n_lines=1, span=0.0, centered=False, bold=False):
+    """A heading with the content-invariant line_px set (plus n_lines/span/style)
+    for the holistic path. span is encoded as ink extent against a 1000px column."""
+    return Segment(page_index=0, type="title", bbox=(0, 0, 10, 10), text=text,
+                   size_px=line, line_px=line, n_lines=n_lines,
+                   ink_left=0.0, ink_right=span * 1000.0, centered=centered, bold=bold)
+
+
+_COLW = lambda s: 1000.0
+
+
+def test_robust_size_still_tiers_by_size():
+    body = [_seg("text", 10.0, "x" * 400)]
+    heads = [_hl(40, "Big"), _hl(28, "Middle"), _hl(28, "Middle Two"), _hl(20, "Small")]
+    assign_levels(heads + body)
+    assert heads[0].level == 1
+    assert heads[1].level == heads[2].level       # equal robust size -> same tier
+    assert heads[3].level > heads[1].level         # smaller -> lower tier
+
+
+def test_long_verbose_fullwidth_heading_demoted_below_terse_peer():
+    """Adnan's complaint at the leveling layer: a wordy full-width block that wraps
+    reads like body and must rank BELOW a terse heading of the same robust size."""
+    body = [_seg("text", 10.0, "x" * 400)]
+    top = _hl(40, "Chapter One", n_lines=1, span=0.3)
+    terse = _hl(28, "Methods", n_lines=1, span=0.2)
+    verbose = _hl(28, "a very long descriptive heading that fills the whole measure "
+                      "and wraps onto a second line reading just like body text",
+                  n_lines=2, span=0.95)
+    assign_levels([top, terse, verbose] + body, col_w_of=_COLW)
+    assert top.level == 1
+    assert verbose.level > terse.level             # same size, demoted for being body-like
+
+
+def test_largest_type_heading_never_demoted_even_if_long():
+    """The guard: a genuinely large title stays H1 even if it is long/full-width/
+    multi-line -- big type is authoritative."""
+    body = [_seg("text", 10.0, "x" * 400)]
+    biglong = _hl(44, "A Long But Genuinely Top Level Chapter Title That Wraps Across Here",
+                  n_lines=2, span=0.95)
+    sub = _hl(24, "Section", n_lines=1, span=0.2)
+    sub2 = _hl(18, "Subsection", n_lines=1, span=0.2)
+    assign_levels([biglong, sub, sub2] + body, col_w_of=_COLW)
+    assert biglong.level == 1
+    assert sub.level > 1
+
+
+def test_numbering_still_wins_even_with_markdown_markers():
+    body = [_seg("text", 10.0, "x" * 300)]
+    heads = [_hl(18, "**1. Introduction**"), _hl(15, "*1.2 History*"),
+             _hl(13, "1.2.1 Early")]
+    assign_levels(heads + body)
+    assert [h.level for h in heads] == [1, 2, 3]   # strip_inline_md before numbering
