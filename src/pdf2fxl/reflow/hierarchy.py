@@ -228,7 +228,12 @@ def assign_levels(segments: List[Segment], body_px: Optional[float] = None,
     # with a consistent heading style -- the norm -- are unaffected.) Then a
     # CONSERVATIVE demotion for a block that is genuinely body text mislabeled as a
     # heading.
-    tiers = _tier_levels([_eff(s) for s in heads])
+    # rel_gap 0.18: the per-line size proxy carries ~15% noise between a 1-line and
+    # a wrapped 2-line heading of the SAME point size, while real heading size steps
+    # are >= ~20-25%. A wide gap absorbs the measurement noise (so same-size headings
+    # share a tier) without collapsing genuine size steps. Finer heading gradations
+    # (< ~18% apart) are the precision limit of projection-based sizing.
+    tiers = _tier_levels([_eff(s) for s in heads], rel_gap=0.18)
     med_vb = _median([_verbosity(s.text) for s in heads]) or 1.0
     body_like_ids = set()
     for s in heads:
