@@ -94,12 +94,13 @@ def measure_segment(gray: np.ndarray, seg: Segment, dark_thresh: int = 128) -> N
     centers = [s + int(np.argmax(p_s[s:e])) for s, e, _pk in merged]
     n_lines = max(1, len(centers))
     seg.n_lines = n_lines
-    # Per-line ink height: total inked vertical extent / line count. Content- and
-    # length-invariant (a longer line is not taller); the residual all-caps vs
-    # ascender/descender difference is offset by the caps bonus in prominence.
-    ink_rows = np.where(row_has_ink)[0]
-    extent = float(ink_rows[-1] - ink_rows[0] + 1) if ink_rows.size else 0.0
-    seg._band_px = extent / n_lines
+    # Per-line size = the median height of ONE line's inked core (a merged peak
+    # region), NOT the block's total extent / line count. The latter includes
+    # inter-line leading, so a 2-line heading would measure ~1.5x a 1-line heading
+    # of the SAME font and get wrongly promoted (Adnan's bug via line count). Core
+    # height is per-line, so a wrapped heading measures the same as a single-line
+    # one of the same type; it is also length-invariant.
+    seg._band_px = float(np.median([e - s for s, e, _pk in merged]))
     seg._pitch_px = float(np.median(np.diff(centers))) if len(centers) >= 2 else 0.0
 
 
