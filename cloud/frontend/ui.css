@@ -335,6 +335,37 @@ input{font:inherit}
 .mode__name{display:block; font-weight:600; font-size:15px; color:var(--deep); line-height:1.3}
 .mode__price{display:block; margin-top:1px; font-size:12.5px; color:var(--body)}
 
+/* ---- upload: emphasis enrichment add-on (a checkbox, not a mode) ----------*/
+.enrich{
+  position:relative; display:flex; align-items:flex-start; gap:12px;
+  margin-top:10px; padding:13px 14px; cursor:pointer;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-md);
+  transition:border-color .2s var(--ease), background .2s var(--ease);
+}
+.enrich:hover{border-color:var(--gold)}
+.enrich input{
+  position:absolute; width:1px; height:1px; margin:-1px;
+  clip-path:inset(50%); overflow:hidden; white-space:nowrap;
+}
+.enrich:has(input:checked){border-color:var(--brown); background:var(--cream)}
+.enrich:has(input:focus-visible){outline:2px solid var(--gold); outline-offset:2px}
+.enrich__box{
+  position:relative; flex:0 0 auto; width:18px; height:18px; margin-top:2px;
+  border:1.5px solid var(--line); border-radius:5px; background:var(--card);
+  transition:border-color .2s var(--ease), background .2s var(--ease);
+}
+.enrich__box::after{
+  content:""; position:absolute; left:5px; top:1.5px; width:5px; height:9px;
+  border:solid var(--card); border-width:0 2px 2px 0; transform:rotate(45deg) scale(.5);
+  opacity:0; transition:opacity .18s var(--ease), transform .18s var(--ease);
+}
+.enrich:has(input:checked) .enrich__box{border-color:var(--brown); background:var(--brown)}
+.enrich:has(input:checked) .enrich__box::after{opacity:1; transform:rotate(45deg)}
+.enrich__text{min-width:0}
+.enrich__name{display:block; font-weight:600; font-size:15px; color:var(--deep); line-height:1.3}
+.enrich__price{display:block; margin-top:1px; font-size:12.5px; color:var(--body)}
+.enrich__price strong{color:var(--brown); font-weight:700}
+
 .upload__actions{margin-top:22px}
 .upload__actions .btn--primary{width:100%}
 .upload__rate{margin-top:12px; text-align:center; font-size:13px; line-height:1.5; color:var(--body)}

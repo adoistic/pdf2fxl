@@ -30,6 +30,9 @@ const queueCount = document.getElementById("queue-count");
 const queueFiles = document.getElementById("queue-files");
 const queueClear = document.getElementById("queue-clear");
 const ratePerPage = document.getElementById("rate-per-page");
+const enrichField = document.getElementById("enrich-field");
+const enrichToggle = document.getElementById("enrich-toggle");
+const enrichPrice = document.getElementById("enrich-price");
 const uploadButton = document.getElementById("upload-button");
 const uploadStatus = document.getElementById("upload-status");
 const uploadProgress = document.getElementById("upload-progress");
@@ -77,6 +80,10 @@ const ledgerClose = document.getElementById("ledger-close");
 
 // Per page prices, in credits. Keep in sync with cloud/worker/src/ledger.ts.
 const RATES = { reflow: 0.9, fixed: 3.0 };
+// Emphasis add-on: availability + per-page surcharge come from /api/config so the
+// checkbox only shows when an OpenRouter model + key are configured server-side.
+let enrichAvailable = false;
+let enrichRate = 0.2;
 
 const STATUS_LABELS = {
   received: "Received",
@@ -896,8 +903,27 @@ function selectedMode() {
   return checked ? checked.value : "reflow";
 }
 
+function selectedEnrich() {
+  return enrichAvailable && !!enrichToggle && enrichToggle.checked;
+}
+
 function updateRateNote() {
-  ratePerPage.textContent = RATES[selectedMode()].toFixed(1);
+  const rate = RATES[selectedMode()] + (selectedEnrich() ? enrichRate : 0);
+  ratePerPage.textContent = rate.toFixed(1);
+}
+
+// Reflect server config in the upload form: show the emphasis checkbox and its
+// price only when the add-on is available.
+async function applyAppConfig() {
+  const cfg = await getAppConfig();
+  const en = cfg && cfg.enrich;
+  enrichAvailable = !!(en && en.available);
+  if (en && typeof en.rateCredits === "number" && en.rateCredits > 0) {
+    enrichRate = en.rateCredits;
+  }
+  if (enrichPrice) enrichPrice.textContent = enrichRate.toFixed(1);
+  if (enrichField) enrichField.hidden = !enrichAvailable;
+  updateRateNote();
 }
 
 function showUploadStatus(message, kind) {
@@ -1035,6 +1061,8 @@ async function createAndUpload(file, mode, bulkId) {
   const title = bulkId ? titleFromFilename(file.name) : jobTitle.value.trim();
   if (title) params.set("title", title);
   if (bulkId) params.set("bulk", bulkId);
+  // One checkbox governs the whole submission; read it at upload time.
+  if (selectedEnrich()) params.set("enrich", "1");
 
   const cfg = await getAppConfig();
   let job;
@@ -1486,7 +1514,9 @@ function wireUploadPanel() {
   for (const radio of document.querySelectorAll('input[name="job-mode"]')) {
     radio.addEventListener("change", updateRateNote);
   }
+  if (enrichToggle) enrichToggle.addEventListener("change", updateRateNote);
   updateRateNote();
+  applyAppConfig().catch((err) => console.error("config load failed", err));
 
   uploadButton.addEventListener("click", () => {
     submitUpload().catch((err) => console.error("upload failed", err));
