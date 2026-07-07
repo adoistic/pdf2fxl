@@ -12,6 +12,12 @@
       "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": ["-m", "uvicorn", "pdf2fxl.web.app:app", "--host", "127.0.0.1", "--port", "8028"],
       "port": 8028
+    },
+    {
+      "name": "frontend-static",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd cloud/frontend && python3 -m http.server 8091"],
+      "port": 8091
     }
   ]
 }
