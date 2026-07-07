@@ -179,3 +179,43 @@ def test_numbering_still_wins_even_with_markdown_markers():
              _hl(13, "1.2.1 Early")]
     assign_levels(heads + body)
     assert [h.level for h in heads] == [1, 2, 3]   # strip_inline_md before numbering
+
+
+def test_large_verbose_heading_is_not_demoted():
+    """A genuinely large title that is long/full-width/2-line must NOT be demoted:
+    only BODY-SIZED blocks are demotable (the size gate). Guards review finding #4."""
+    body = [_seg("text", 10.0, "x" * 400)]
+    big = _hl(30, "A Long Important Chapter Title That Wraps Across The Whole "
+                  "Page Reading Wide", n_lines=2, span=0.97)
+    mid = _hl(20, "Section", n_lines=1, span=0.2)
+    small = _hl(14, "Sub", n_lines=1, span=0.2)
+    assign_levels([big, mid, small] + body, col_w_of=_COLW, body_px=10.0)
+    assert big.level == 1                              # 3x body size -> never demoted
+    assert mid.level > 1 and small.level > mid.level
+
+
+def test_body_sized_masquerading_block_demoted_and_not_repromoted():
+    """A body-sized, full-width, wrapped, wordy block mislabeled as a heading is
+    demoted below real headings -- and the largest-type guard does not re-promote
+    it. Guards review findings #4/#5/#7."""
+    body = [_seg("text", 10.0, "x" * 400)]
+    terse = [_hl(22, t, n_lines=1, span=0.2)
+             for t in ["Methods", "Results", "Aims", "Data", "Notes"]]
+    bodyish = _hl(11, "this is a long run of body text mislabeled as a heading that "
+                      "fills the whole measure and wraps onto several lines here now",
+                  n_lines=3, span=0.98)
+    assign_levels(terse + [bodyish] + body, col_w_of=_COLW, body_px=11.0)
+    assert bodyish.level > terse[0].level              # demoted below real headings
+
+
+def test_unnumbered_classified_by_size_not_verbosity():
+    """A numbered book classifies unnumbered headings by robust SIZE (monotonic
+    depth centroids), so a verbose but chapter-SIZED unnumbered heading is level 1,
+    not demoted for wordiness. Guards review finding #6."""
+    body = [_seg("text", 10.0, "x" * 400)]
+    unum = _hl(40, "An Unnumbered But Genuinely Large Chapter Level Heading With "
+                   "A Great Many Words In It")
+    segs = [_hl(40, "1 Alpha"), _hl(40, "2 Beta"),
+            _hl(24, "1.1 Sub A"), _hl(24, "2.1 Sub B"), unum] + body
+    assign_levels(segs, col_w_of=_COLW)
+    assert unum.level == 1                             # by size, not verbosity

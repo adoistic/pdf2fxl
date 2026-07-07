@@ -7,7 +7,6 @@ import re
 from .segment import Segment, is_heading_type
 from .inline_md import strip_inline_md
 
-W0 = 6.0               # brevity knee: a 6-word heading has brevity penalty -1.0
 MAX_LEVEL = 6
 
 
@@ -148,48 +147,6 @@ def _verbosity(text: str) -> float:
     return float(max(1, words + math.ceil(cjk * 0.5)))
 
 
-def _caps_frac(text: str, min_cased: int = 4) -> Optional[float]:
-    """Uppercase fraction among cased letters, or None when the concept does not
-    apply (caseless scripts: CJK/Arabic/Devanagari/Hebrew, or too few cased chars).
-    Returning None (not 0.0) means the caps signal is OMITTED for that heading, so a
-    uniform book-wide absence is a constant offset that cannot change ranks."""
-    letters = [c for c in text if c.isalpha()]
-    cased = [c for c in letters if c.islower() or c.isupper()]
-    if len(cased) < min_cased:
-        return None
-    upper = sum(1 for c in cased if c.isupper())
-    return upper / len(cased)
-
-
-def _prominence(seg: Segment, body_line: float, col_w: float) -> float:
-    """Holistic top-heading likelihood (higher = more top-level). Combines a
-    content-invariant size ratio with penalties for verbosity/line-count/full-width
-    span and bonuses for all-caps/centered/bold. Every term is signed so that
-    'more prominent => larger'. Falls back to size_px when line_px is unset (so
-    directly-constructed test segments without finalize_line_sizes still work)."""
-    eff = seg.line_px if seg.line_px > 0 else seg.size_px
-    r = eff / body_line if body_line > 0 else 1.0
-    size_term = min(3.0, max(0.6, r))                       # clamp so one outlier can't dominate
-
-    p = 1.4 * size_term
-    p += -math.log2(1.0 + _verbosity(seg.text) / W0)        # verbosity penalty (grows slowly)
-    p += -0.5 * max(0, seg.n_lines - 1)                     # each extra line costs 0.5
-
-    if col_w and col_w > 0:
-        span = (seg.ink_right - seg.ink_left) / col_w
-        span = min(1.0, max(0.0, span))
-        p += -1.2 * max(0.0, span - 0.75) / 0.25            # only the top quartile of span is penalised
-
-    c = _caps_frac(seg.text)
-    if c is not None:
-        p += 0.6 * c                                        # all-caps bonus (omitted for caseless scripts)
-    if seg.centered:
-        p += 0.4
-    if seg.bold:
-        p += 0.3
-    return p
-
-
 def assign_levels(segments: List[Segment], body_px: Optional[float] = None,
                   col_w_of: Optional[Callable[[Segment], float]] = None,
                   max_level: int = 6) -> None:
@@ -215,8 +172,10 @@ def assign_levels(segments: List[Segment], body_px: Optional[float] = None,
     def col_w(s: Segment) -> float:
         return col_w_of(s) if col_w_of is not None else 0.0
 
-    # Segment is a mutable (unhashable) dataclass, so key prominence by id().
-    prom = {id(s): _prominence(s, body_line, col_w(s)) for s in heads}
+    def _eff(s: Segment) -> float:
+        # Content-invariant per-line size (line_px); size_px fallback for segments
+        # constructed directly in tests without finalize_line_sizes.
+        return s.line_px if s.line_px > 0 else s.size_px
 
     numbered = [(s, parse_numbering(strip_inline_md(s.text))) for s in heads]
     has_numbers = any(depth > 0 for _, depth in numbered)
@@ -228,12 +187,20 @@ def assign_levels(segments: List[Segment], body_px: Optional[float] = None,
         return
 
     if has_numbers:
-        # Learn a prominence centroid per numbering depth from the NUMBERED heads.
+        # Learn a robust SIZE centroid (median line_px) per numbering depth from the
+        # NUMBERED heads, then enforce monotonicity -- a deeper depth is never larger
+        # than a shallower one -- so noisy measurement can't invert the ladder and
+        # mis-classify the unnumbered headings against it.
         by_depth: Dict[int, List[float]] = defaultdict(list)
         for s, depth in numbered:
             if depth > 0:
-                by_depth[depth].append(prom[id(s)])
+                by_depth[depth].append(_eff(s))
         centroid = {d: _median(v) for d, v in by_depth.items() if v}
+        prev: Optional[float] = None
+        for d in sorted(centroid):
+            if prev is not None and centroid[d] >= prev:
+                centroid[d] = prev - 1e-3
+            prev = centroid[d]
         # Recurrence-demotion: UNCHANGED intent. A recurring unnumbered heading
         # (per-chapter 'References') is one section repeated, not N chapters ->
         # demote to level 2. Language-agnostic: keyed on the text repeating.
@@ -248,35 +215,43 @@ def assign_levels(segments: List[Segment], body_px: Optional[float] = None,
             elif recur[strip_inline_md(s.text).strip().lower()] >= 3:
                 s.level = demote
             elif centroid:
-                nearest = min(centroid, key=lambda d: abs(centroid[d] - prom[id(s)]))
+                nearest = min(centroid, key=lambda d: abs(centroid[d] - _eff(s)))
                 s.level = min(nearest, max_level)
             else:
                 s.level = 1
         return
 
-    # No numbering anywhere: tier by ROBUST size (relative gaps on line_px), which
-    # gives a clean size hierarchy now that line_px is content-invariant. Then apply
-    # a CONSERVATIVE demotion: a block that fills the full measure, wraps to 2+
-    # lines, AND is far wordier than its peer headings reads like body, so it drops
-    # one tier — this is exactly the "long heading wrongly promoted" case. Robust
-    # measurement already stops length from inflating size; this only catches the
-    # residual paragraph-masquerading-as-heading.
-    def _eff(s: Segment) -> float:
-        return s.line_px if s.line_px > 0 else s.size_px
-
+    # No numbering anywhere: tier by ROBUST size (relative gaps on line_px), a clean
+    # size hierarchy now that line_px is length-invariant. (Known limitation: the
+    # size proxy still carries a mild case/descender bias, so a book that MIXES
+    # all-caps and title-case headings at the SAME level can mis-tier them; books
+    # with a consistent heading style -- the norm -- are unaffected.) Then a
+    # CONSERVATIVE demotion for a block that is genuinely body text mislabeled as a
+    # heading.
     tiers = _tier_levels([_eff(s) for s in heads])
     med_vb = _median([_verbosity(s.text) for s in heads]) or 1.0
+    body_like_ids = set()
     for s in heads:
         lvl = min(tiers.get(_eff(s), 1), max_level)
         span = (s.ink_right - s.ink_left) / col_w(s) if col_w(s) > 0 else 0.0
-        body_like = span >= 0.85 and s.n_lines >= 2 and _verbosity(s.text) >= 2.5 * med_vb
+        # Demote one tier ONLY when the block is body-SIZED (not distinctly larger
+        # than body text), fills the measure, wraps to 2+ lines, and is genuinely
+        # wordy (>= 6 words AND wordier than its peers). The size gate is decisive:
+        # a real large title is never demoted however wordy, and the verbosity term
+        # cannot misfire on terse-heading books where the median collapses to ~1 word.
+        body_sized = body_line > 0 and _eff(s) <= body_line * 1.35
+        body_like = (body_sized and span >= 0.85 and s.n_lines >= 2
+                     and _verbosity(s.text) >= max(6.0, 2.0 * med_vb))
         if body_like and lvl < max_level:
             lvl += 1
+            body_like_ids.add(id(s))
         s.level = lvl
-    # Largest-type guard: a genuinely big title (even a long, full-width one) must
-    # never be demoted. Any heading at the global-max robust size is floored to 1.
+    # Largest-type guard: a genuinely big title (even a long, full-width one) is
+    # never demoted -- floor any global-max-size heading to level 1 -- EXCEPT a
+    # block we just demoted as body-like, which must stay down (else the guard would
+    # re-promote a large-type paragraph misclassified as a title back to H1).
     max_eff = max((_eff(s) for s in heads), default=0.0)
     if max_eff > 0:
         for s in heads:
-            if abs(_eff(s) - max_eff) <= 1e-6:
+            if abs(_eff(s) - max_eff) <= 1e-6 and id(s) not in body_like_ids:
                 s.level = 1
