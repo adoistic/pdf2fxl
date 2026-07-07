@@ -3,6 +3,17 @@ from pdf2fxl.reflow.render_docx import render_docx
 from pdf2fxl.reflow.docmodel import Doc, Heading, Paragraph, Run, ChapterBreak
 
 
+def test_docx_run_emphasis_incl_underline(tmp_path):
+    doc = Doc(title="T", language="en", nodes=[
+        Paragraph(runs=[Run(text="x", bold=True, italic=True, underline=True)]),
+    ])
+    out = tmp_path / "e.docx"
+    render_docx(doc, out, assets_root=tmp_path)
+    d = Document(str(out))
+    run = d.paragraphs[-1].runs[0]
+    assert run.bold and run.italic and run.underline
+
+
 def test_docx_has_heading_and_paragraph(tmp_path):
     doc = Doc(title="T", language="en", nodes=[
         ChapterBreak(),

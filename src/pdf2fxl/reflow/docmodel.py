@@ -9,6 +9,7 @@ class Run:
     text: str
     bold: bool = False
     italic: bool = False
+    underline: bool = False
     dropcap: bool = False
 
 

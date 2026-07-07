@@ -22,6 +22,7 @@ def render_docx(doc: Doc, out_path: Path, assets_root: Path) -> Path:
                 run = p.add_run(r.text)
                 run.bold = r.bold
                 run.italic = r.italic
+                run.underline = getattr(r, "underline", False)
         elif isinstance(n, (Figure, Table)) and getattr(n, "image_src", None) or (
                 isinstance(n, Figure) and n.src):
             src = n.src if isinstance(n, Figure) else n.image_src

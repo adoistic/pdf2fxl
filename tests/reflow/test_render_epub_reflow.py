@@ -6,6 +6,29 @@ from pdf2fxl.reflow.docmodel import Doc, Heading, Paragraph, Run, ChapterBreak
 FONT = "assets/fonts/NotoSerif-Regular.ttf"
 
 
+def test_run_emphasis_renders_strong_em_underline(tmp_path):
+    """Inline emphasis runs render as <strong>/<em>/<u>; a run with several
+    styles nests all three so combined bold+italic+underline survives."""
+    doc = Doc(title="T", language="en", nodes=[
+        ChapterBreak(), Heading(level=1, text="One"),
+        Paragraph(runs=[
+            Run(text="a "),
+            Run(text="b", bold=True),
+            Run(text=" i", italic=True),
+            Run(text=" u", underline=True),
+            Run(text=" all", bold=True, italic=True, underline=True),
+        ]),
+    ])
+    out = write_epub_reflow(doc, tmp_path / "b.epub", font_path=FONT, assets_root=tmp_path)
+    with zipfile.ZipFile(out) as z:
+        chap = next(z.read(n).decode() for n in z.namelist() if n.startswith("OEBPS/chap-"))
+    assert "<strong>b</strong>" in chap
+    assert "<em> i</em>" in chap
+    assert "<u> u</u>" in chap
+    # combined: order is strong>em>u from _runs_html
+    assert "<u><em><strong> all</strong></em></u>" in chap
+
+
 def test_epub_structure_and_chapter_split(tmp_path):
     doc = Doc(title="T", language="en", nodes=[
         ChapterBreak(), Heading(level=1, text="One"),

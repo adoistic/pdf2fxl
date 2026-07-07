@@ -61,6 +61,8 @@ def _runs_html(runs) -> str:
             t = f"<strong>{t}</strong>"
         if r.italic:
             t = f"<em>{t}</em>"
+        if getattr(r, "underline", False):
+            t = f"<u>{t}</u>"
         out.append(t)
     return "".join(out)
 

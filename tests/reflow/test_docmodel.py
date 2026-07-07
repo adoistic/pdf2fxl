@@ -18,3 +18,29 @@ def test_doc_json_round_trip():
     assert restored.nodes[2].runs[1].bold is True
     assert isinstance(restored.nodes[3], Figure)
     assert restored.nodes[3].width_frac == 0.5
+
+
+def test_run_underline_round_trips():
+    doc = Doc(title="T", language="en", nodes=[
+        Paragraph(runs=[Run(text="plain "),
+                        Run(text="under", underline=True),
+                        Run(text=" both", bold=True, underline=True)]),
+    ])
+    restored = Doc.from_json(doc.to_json())
+    runs = restored.nodes[0].runs
+    assert runs[0].underline is False
+    assert runs[1].underline is True and runs[1].bold is False
+    assert runs[2].underline is True and runs[2].bold is True
+
+
+def test_old_doc_json_without_underline_defaults_false():
+    # A doc.json written before the underline field existed must still load.
+    import json
+    legacy = json.dumps({
+        "title": "T", "language": "en",
+        "nodes": [{"_kind": "Paragraph",
+                   "runs": [{"text": "hi", "bold": False, "italic": False,
+                             "dropcap": False}]}],
+    })
+    restored = Doc.from_json(legacy)
+    assert restored.nodes[0].runs[0].underline is False
