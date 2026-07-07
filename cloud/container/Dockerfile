@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ /srv/src/
 COPY assets/ /srv/assets/
 COPY cloud/container/app.py /srv/cloud/container/app.py
+COPY cloud/container/enrich.py /srv/cloud/container/enrich.py
 
 WORKDIR /srv/cloud/container
 EXPOSE 8000

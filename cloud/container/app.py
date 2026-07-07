@@ -6,6 +6,7 @@ publicly; it is reached only through the Worker's container binding.
 """
 
 import base64
+import json
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +22,8 @@ from fastapi.responses import Response
 # The reflow engine lives in src/pdf2fxl; import it, never modify it.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
+# The container's own modules (enrich) sit next to this file.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pdf2fxl.config import Config  # noqa: E402
 from pdf2fxl.ingest import page_count, rasterize_page  # noqa: E402
 from pdf2fxl.reflow import scripts as _scripts  # noqa: E402
@@ -30,6 +33,8 @@ from pdf2fxl.reflow.pipeline_reflow import _all_text, _trim  # noqa: E402
 from pdf2fxl.reflow.pipeline_reflow import convert_book_reflow  # noqa: E402
 from pdf2fxl.reflow.render_docx import render_docx  # noqa: E402
 from pdf2fxl.reflow.render_epub_reflow import write_epub_reflow  # noqa: E402
+from pdf2fxl.reflow.render_md import render_markdown  # noqa: E402
+import enrich  # noqa: E402  (container-local emphasis enrichment module)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -55,6 +60,13 @@ _OCR_CONCURRENCY = 10
 # Rasterization resolution for reflow. Lower than the engine's 300 DPI to bound
 # per-job memory (the heading maths is scale invariant, OCR is fine at 150).
 _PROCESS_DPI = 150
+
+
+def _png_bytes(image_bgr) -> bytes:
+    ok, png = cv2.imencode(".png", image_bgr)
+    if not ok:
+        raise RuntimeError("failed to PNG-encode page image")
+    return png.tobytes()
 
 
 def _process_ocr(image_bgr, cfg: Config, api_key: str) -> dict:
@@ -192,12 +204,43 @@ async def process(request: Request) -> dict:
                         "base64": base64.b64encode(f.read_bytes()).decode(),
                     })
 
+        # Optional emphasis enrichment (+0.2 credits/page): recover bold/italic/
+        # underline the OCR drops. Off unless the Worker passes ?enrich=1 with a
+        # model id and forwards an OpenRouter key. Fail-open: any error ships the
+        # plain document, and the Worker refunds the surcharge for pages not
+        # enriched (pages_enriched < page_count).
+        enrich_summary = {"requested": False, "pages_total": len(verbatim),
+                          "pages_enriched": 0}
+        enrich_flag = request.query_params.get("enrich") == "1"
+        enrich_model = request.query_params.get("enrich_model") or ""
+        openrouter_key = request.headers.get("x-openrouter-key", "")
+        if enrich_flag and enrich_model and openrouter_key:
+            enrich_summary["requested"] = True
+
+            def _page_image(i: int) -> bytes:
+                raw = rasterize_page(pdf_path, i, cfg.zoom)
+                return _png_bytes(_trim(raw, cfg, pdf_path, i))
+
+            try:
+                total, enriched, changed = enrich.enrich_doc_json(
+                    doc_json, verbatim, _page_image, enrich.openrouter_emphasis,
+                    model=enrich_model, api_key=openrouter_key)
+                enrich_summary["pages_total"] = total
+                enrich_summary["pages_enriched"] = enriched
+                if changed:
+                    # Re-render markdown from the enriched doc so the .md download
+                    # carries the recovered bold/italic (underline has no md form).
+                    markdown = render_markdown(Doc.from_json(json.dumps(doc_json)))
+            except Exception:
+                enrich_summary["pages_enriched"] = 0  # fail-open: ship plain
+
         return {
             "page_count": len(verbatim),
             "verbatim": verbatim,
             "doc_json": doc_json,
             "markdown": markdown,
             "figures": figures,
+            "enrich": enrich_summary,
         }
     except HTTPException:
         raise
