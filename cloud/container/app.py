@@ -206,15 +206,15 @@ async def process(request: Request) -> dict:
 
         # Optional emphasis enrichment (+0.2 credits/page): recover bold/italic/
         # underline the OCR drops. Off unless the Worker passes ?enrich=1 with a
-        # model id and forwards an OpenRouter key. Fail-open: any error ships the
-        # plain document, and the Worker refunds the surcharge for pages not
-        # enriched (pages_enriched < page_count).
+        # model id and forwards the vision-model API key. Fail-open: any error
+        # ships the plain document, and the Worker refunds the surcharge for pages
+        # not enriched (pages_enriched < page_count).
         enrich_summary = {"requested": False, "pages_total": len(verbatim),
                           "pages_enriched": 0}
         enrich_flag = request.query_params.get("enrich") == "1"
         enrich_model = request.query_params.get("enrich_model") or ""
-        openrouter_key = request.headers.get("x-openrouter-key", "")
-        if enrich_flag and enrich_model and openrouter_key:
+        enrich_key = request.headers.get("x-enrich-key", "")
+        if enrich_flag and enrich_model and enrich_key:
             enrich_summary["requested"] = True
 
             def _page_image(i: int) -> bytes:
@@ -223,8 +223,8 @@ async def process(request: Request) -> dict:
 
             try:
                 total, enriched, changed = enrich.enrich_doc_json(
-                    doc_json, verbatim, _page_image, enrich.openrouter_emphasis,
-                    model=enrich_model, api_key=openrouter_key)
+                    doc_json, verbatim, _page_image, enrich.call_emphasis_model,
+                    model=enrich_model, api_key=enrich_key)
                 enrich_summary["pages_total"] = total
                 enrich_summary["pages_enriched"] = enriched
                 if changed:

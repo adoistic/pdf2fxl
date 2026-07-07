@@ -19,7 +19,7 @@ export default defineWorkersConfig(async () => {
               ADMIN_EMAIL: "adnan@thothica.com",
               // Present so the enrichment add-on's secret gate is satisfied;
               // availability still needs a non-empty enrich_model config row.
-              OPENROUTER_API_KEY: "test-openrouter-key",
+              ENRICH_API_KEY: "test-enrich-key",
               // Dummy R2 creds so the direct-to-R2 (presigned) path is exercised.
               R2_ACCOUNT_ID: "testacct",
               R2_ACCESS_KEY_ID: "AKIATEST",

@@ -191,7 +191,7 @@ function realProcess(env: Env): ProcessFn {
       if (enrich.available) {
         qs.set("enrich", "1");
         qs.set("enrich_model", enrich.model);
-        headers["x-openrouter-key"] = env.OPENROUTER_API_KEY!;
+        headers["x-enrich-key"] = env.ENRICH_API_KEY!;
       }
     }
     const res = await engine.fetch(

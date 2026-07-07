@@ -1,14 +1,14 @@
 """Emphasis enrichment: recover bold/italic/underline that OCR drops.
 
-A post-OCR pass. For each page we show a vision model the page image plus that
-page's OCR text blocks and ask it to return the SAME text with only <b>/<i>/<u>
-tags added. The model's output is used *only* to decide which character ranges
-are emphasized — never as text. Every rendered character is sliced from the
-document's own original run text, so this pass can never alter or corrupt text;
-it can only add styling on top of what the engine already detected.
+A post-OCR pass. For each page we show a hosted vision model the page image plus
+that page's OCR text blocks and ask it to return the SAME text with only
+<b>/<i>/<u> tags added. The model's output is used *only* to decide which
+character ranges are emphasized — never as text. Every rendered character is
+sliced from the document's own original run text, so this pass can never alter or
+corrupt text; it can only add styling on top of what the engine already detected.
 
 Pure functions here are unit-tested without any network. The one networked
-helper (`openrouter_emphasis`) is injected so tests pass a stub.
+helper (`call_emphasis_model`) is injected so tests pass a stub.
 """
 
 from __future__ import annotations
@@ -301,26 +301,49 @@ def enrich_doc_json(
 
 
 # --------------------------------------------------------------------------- #
-# OpenRouter client (networked; injected as a stub in tests)
+# Hosted vision-model client (networked; injected as a stub in tests)
 # --------------------------------------------------------------------------- #
-def _strip_code_fence(text: str) -> str:
+# OpenAI-compatible chat-completions endpoint of the model host. Kept in one
+# constant so the provider stays a single, replaceable detail (white-labeled;
+# never surfaced to users).
+_EMPHASIS_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _extract_json_array(text: str) -> list:
+    """Parse a JSON array out of a model reply, tolerating code fences or a little
+    surrounding prose (some models wrap the array). Raises if none is found."""
     t = text.strip()
     if t.startswith("```"):
         t = re.sub(r"^```[a-zA-Z]*\n?", "", t)
-        t = re.sub(r"\n?```$", "", t)
-    return t.strip()
+        t = re.sub(r"\n?```$", "", t).strip()
+    try:
+        arr = json.loads(t)
+    except Exception:
+        start, end = t.find("["), t.rfind("]")
+        if start == -1 or end <= start:
+            raise ValueError("no JSON array in model reply")
+        arr = json.loads(t[start:end + 1])
+    if not isinstance(arr, list):
+        raise ValueError("model did not return a JSON array")
+    return arr
 
 
-def openrouter_emphasis(
+def call_emphasis_model(
     image_png: bytes,
     block_texts: List[str],
     *,
     model: str,
     api_key: str,
     instruction: str,
-    timeout: float = 90.0,
+    timeout: float = 120.0,
 ) -> List[str]:
-    """One vision call: page image + block texts -> same-length tagged array."""
+    """One vision call: page image + block texts -> same-length tagged array.
+
+    NOTE: `max_tokens` is deliberately NOT set. Capping output tokens truncates
+    the returned array on long pages, which then fails the length/gate check and
+    needlessly drops (and refunds) enrichment. Let the model return its full
+    response; the integrity gate downstream is what keeps us safe.
+    """
     import httpx
 
     data_url = "data:image/png;base64," + base64.b64encode(image_png).decode()
@@ -339,17 +362,14 @@ def openrouter_emphasis(
     for _ in range(3):
         try:
             resp = httpx.post(
-                "https://openrouter.ai/api/v1/chat/completions",
+                _EMPHASIS_API_URL,
                 headers={"Authorization": f"Bearer {api_key}",
                          "content-type": "application/json"},
                 json=payload, timeout=timeout,
             )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
-            arr = json.loads(_strip_code_fence(content))
-            if not isinstance(arr, list):
-                raise ValueError("model did not return a JSON array")
-            return [str(x) for x in arr]
+            return [str(x) for x in _extract_json_array(content)]
         except Exception as exc:  # transient network / shape error
             last_exc = exc
-    raise RuntimeError(f"openrouter emphasis failed: {last_exc}")
+    raise RuntimeError(f"emphasis model call failed: {last_exc}")

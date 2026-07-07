@@ -6,6 +6,10 @@ out/
 .venv/
 .env
 .env.*
+# Wrangler local secrets (never commit the emphasis-model API key)
+.dev.vars
+.dev.vars.*
+*.dev.vars
 .claude/settings.local.json
 .DS_Store
 firebase-debug.log

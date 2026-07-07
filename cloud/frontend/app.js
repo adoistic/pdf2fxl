@@ -79,7 +79,7 @@ const ledgerBody = document.getElementById("ledger-body");
 const ledgerClose = document.getElementById("ledger-close");
 
 // Per page prices, in credits. Keep in sync with cloud/worker/src/ledger.ts.
-const RATES = { reflow: 0.9, fixed: 3.0 };
+const RATES = { reflow: 0.7, fixed: 3.0 };
 // Emphasis add-on: availability + per-page surcharge come from /api/config so the
 // checkbox only shows when an OpenRouter model + key are configured server-side.
 let enrichAvailable = false;

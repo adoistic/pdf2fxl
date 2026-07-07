@@ -138,7 +138,7 @@ def test_enrich_page_call_error_is_not_billed():
     verbatim = [{"pages": [{"blocks": [{"type": "text", "content": "Body text."}]}]}]
 
     def boom(_img, blocks, **_kw):
-        raise RuntimeError("openrouter down")
+        raise RuntimeError("model down")
 
     total, enriched, changed = en.enrich_doc_json(
         doc, verbatim, lambda i: b"PNG", boom, model="m", api_key="k")
@@ -187,14 +187,14 @@ def _patch_ocr(monkeypatch):
 def _post(qs, enrich_headers=True):
     headers = {"content-type": "application/pdf", "x-mistral-key": "mk"}
     if enrich_headers:
-        headers["x-openrouter-key"] = "ork"
+        headers["x-enrich-key"] = "ork"
     return client.post(qs, content=make_pdf(2), headers=headers)
 
 
 def test_process_enrich_applies_emphasis(monkeypatch):
     def fake_model(_img, blocks, **_kw):
         return [b.replace("paragraph", "<b>paragraph</b>") for b in blocks]
-    monkeypatch.setattr(appmod.enrich, "openrouter_emphasis", fake_model)
+    monkeypatch.setattr(appmod.enrich, "call_emphasis_model",fake_model)
 
     r = _post("/process?mode=reflow&title=B&enrich=1&enrich_model=test")
     assert r.status_code == 200, r.text
@@ -217,7 +217,7 @@ def test_process_without_enrich_is_untouched(monkeypatch):
     def spy(_img, blocks, **_kw):
         called["n"] += 1
         return blocks
-    monkeypatch.setattr(appmod.enrich, "openrouter_emphasis", spy)
+    monkeypatch.setattr(appmod.enrich, "call_emphasis_model",spy)
 
     r = _post("/process?mode=reflow&title=B", enrich_headers=False)
     assert r.status_code == 200, r.text

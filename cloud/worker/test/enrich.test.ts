@@ -35,8 +35,8 @@ describe("enrichment pricing", () => {
   it("count folds the +0.2/page surcharge into creditsMcr and snapshots the rate", async () => {
     const { userId, job } = await receivedJob({ fundMcr: 50_000, enrich: true });
     const res = await countJob(env.DB, env.STORE, tenPages, job.id, userId);
-    // base 900 + surcharge 200 = 1100/page x 10 = 11_000; rateMcr stays base.
-    expect(res).toEqual({ ok: true, pageCount: 10, rateMcr: 900, creditsMcr: 11_000 });
+    // base 700 + surcharge 200 = 900/page x 10 = 9_000; rateMcr stays base.
+    expect(res).toEqual({ ok: true, pageCount: 10, rateMcr: 700, creditsMcr: 9_000 });
     const after = await getJobForUser(env.DB, job.id, userId);
     expect(after!.enrichRateMcr).toBe(200);
     expect(await getBalanceMcr(env.DB, userId)).toBe(50_000); // no hold
@@ -45,7 +45,7 @@ describe("enrichment pricing", () => {
   it("count with enrich off is unchanged (surcharge 0)", async () => {
     const { userId, job } = await receivedJob({ enrich: false });
     const res = await countJob(env.DB, env.STORE, tenPages, job.id, userId);
-    expect(res).toEqual({ ok: true, pageCount: 10, rateMcr: 900, creditsMcr: 9_000 });
+    expect(res).toEqual({ ok: true, pageCount: 10, rateMcr: 700, creditsMcr: 7_000 });
     const after = await getJobForUser(env.DB, job.id, userId);
     expect(after!.enrichRateMcr).toBe(0);
   });
@@ -54,25 +54,25 @@ describe("enrichment pricing", () => {
     const { userId, job } = await receivedJob({ fundMcr: 50_000, enrich: true });
     await countJob(env.DB, env.STORE, tenPages, job.id, userId);
     const res = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
-    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 11_000 });
-    expect(await getBalanceMcr(env.DB, userId)).toBe(39_000); // 50k - 11k
+    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 9_000 });
+    expect(await getBalanceMcr(env.DB, userId)).toBe(41_000); // 50k - 9k
   });
 
   it("single-file start (no prior count) still snapshots the surcharge and holds it", async () => {
     const { userId, job } = await receivedJob({ fundMcr: 50_000, enrich: true });
     const res = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
-    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 11_000 });
+    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 9_000 });
     const after = await getJobForUser(env.DB, job.id, userId);
     expect(after!.enrichRateMcr).toBe(200); // snapshotted from live config
-    expect(await getBalanceMcr(env.DB, userId)).toBe(39_000);
+    expect(await getBalanceMcr(env.DB, userId)).toBe(41_000);
   });
 
   it("insufficient credits gate accounts for the surcharge", async () => {
-    // 10_000 covers base (9_000) but not base+surcharge (11_000).
-    const { userId, job } = await receivedJob({ fundMcr: 10_000, enrich: true });
+    // 8_000 covers base (7_000) but not base+surcharge (9_000).
+    const { userId, job } = await receivedJob({ fundMcr: 8_000, enrich: true });
     const res = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
     expect(res).toEqual({ ok: false, reason: "insufficient_credits" });
-    expect(await getBalanceMcr(env.DB, userId)).toBe(10_000); // nothing held
+    expect(await getBalanceMcr(env.DB, userId)).toBe(8_000); // nothing held
   });
 });
 
@@ -120,7 +120,7 @@ async function processingEnrichJob(fundMcr = 20_000) {
     userId, mode: "reflow", express: false, enrich: true, title: "Book", r2UploadKey: key,
   });
   const res = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
-  expect(res.ok).toBe(true); // holds 11_000
+  expect(res.ok).toBe(true); // holds 9_000 (base 700 + surcharge 200) x 10
   return { userId, jobId: job.id };
 }
 
@@ -141,29 +141,29 @@ function stub(pagesEnriched: number | undefined): ProcessFn {
 describe("finalize surcharge refund", () => {
   it("all pages enriched: no refund (full surcharge earned)", async () => {
     const { userId, jobId } = await processingEnrichJob();
-    expect(await getBalanceMcr(env.DB, userId)).toBe(9_000); // 20k - 11k hold
+    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000); // 20k - 9k hold
     expect(await finalizeJob(env, jobId, stub(10))).toBe("ready");
-    expect(await getBalanceMcr(env.DB, userId)).toBe(9_000); // charged full 11k
+    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000); // charged full 9k
   });
 
   it("no pages enriched: full surcharge refunded", async () => {
     const { userId, jobId } = await processingEnrichJob();
     expect(await finalizeJob(env, jobId, stub(0))).toBe("ready");
-    // charged base only: 20k - 11k + (200*10 refund) = 11_000
-    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000);
+    // charged base only: 20k - 9k + (200*10 refund) = 13_000
+    expect(await getBalanceMcr(env.DB, userId)).toBe(13_000);
   });
 
   it("partial: refunds the surcharge for pages not enriched", async () => {
     const { userId, jobId } = await processingEnrichJob();
     expect(await finalizeJob(env, jobId, stub(6))).toBe("ready"); // 4 pages refunded
-    // 20k - 11k + (200*4) = 9_800
-    expect(await getBalanceMcr(env.DB, userId)).toBe(9_800);
+    // 20k - 9k + (200*4) = 11_800
+    expect(await getBalanceMcr(env.DB, userId)).toBe(11_800);
   });
 
   it("missing enrich summary refunds the full surcharge (NaN-safe)", async () => {
     const { userId, jobId } = await processingEnrichJob();
     expect(await finalizeJob(env, jobId, stub(undefined))).toBe("ready");
-    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000); // full surcharge back
+    expect(await getBalanceMcr(env.DB, userId)).toBe(13_000); // full surcharge back
   });
 
   it("idempotent: a second finalize does not double-refund", async () => {

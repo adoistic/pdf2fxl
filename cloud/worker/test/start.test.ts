@@ -21,25 +21,25 @@ async function seededJob(opts: { fundMcr: number; express?: boolean; mode?: "ref
 const tenPages = async (_pdf: ArrayBuffer) => ({ pageCount: 10 });
 
 describe("startJob", () => {
-  it("prices reflow at 0.9/page and holds exactly", async () => {
+  it("prices reflow at 0.7/page and holds exactly", async () => {
     const { userId, job } = await seededJob({ fundMcr: 20_000 });
     const res = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
-    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 9_000 });
-    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000);
+    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 7_000 });
+    expect(await getBalanceMcr(env.DB, userId)).toBe(13_000);
     const after = await getJobForUser(env.DB, job.id, userId);
     expect(after!.status).toBe("processing");
-    expect(after!.rateMcr).toBe(900);
+    expect(after!.rateMcr).toBe(700);
     expect(after!.holdId).not.toBeNull();
   });
 
   it("reflow price is one tier regardless of the old express flag", async () => {
     const a = await seededJob({ fundMcr: 20_000, express: false });
     expect(await startJob(env.DB, env.STORE, tenPages, a.job.id, a.userId)).toEqual({
-      ok: true, pageCount: 10, heldMcr: 9_000,
+      ok: true, pageCount: 10, heldMcr: 7_000,
     });
     const b = await seededJob({ fundMcr: 20_000, express: true });
     expect(await startJob(env.DB, env.STORE, tenPages, b.job.id, b.userId)).toEqual({
-      ok: true, pageCount: 10, heldMcr: 9_000,
+      ok: true, pageCount: 10, heldMcr: 7_000,
     });
   });
 
@@ -51,7 +51,7 @@ describe("startJob", () => {
   });
 
   it("fails the job cleanly when credits are insufficient", async () => {
-    const { userId, job } = await seededJob({ fundMcr: 5_000, express: true }); // needs 9000
+    const { userId, job } = await seededJob({ fundMcr: 5_000, express: true }); // needs 7000
     const res = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
     expect(res).toEqual({ ok: false, reason: "insufficient_credits" });
     const after = await getJobForUser(env.DB, job.id, userId);
@@ -65,7 +65,7 @@ describe("startJob", () => {
     expect((await startJob(env.DB, env.STORE, tenPages, job.id, userId)).ok).toBe(true);
     const again = await startJob(env.DB, env.STORE, tenPages, job.id, userId);
     expect(again).toEqual({ ok: false, reason: "not_startable" });
-    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000); // one hold only
+    expect(await getBalanceMcr(env.DB, userId)).toBe(13_000); // one hold only
   });
 
   it("fails cleanly when the engine errors, leaving no hold", async () => {
@@ -100,7 +100,7 @@ describe("startJob", () => {
     const after = await getJobForUser(env.DB, job.id, userId);
     expect(after!.status).toBe("failed");
     expect(await getBalanceMcr(env.DB, userId)).toBe(50_000);
-    await env.DB.prepare("INSERT INTO config (key, value) VALUES ('rate_reflow_mcr', '900')").run();
+    await env.DB.prepare("INSERT INTO config (key, value) VALUES ('rate_reflow_mcr', '700')").run();
   });
 
   it("absurd page counts fail cleanly instead of overflowing the hold", async () => {

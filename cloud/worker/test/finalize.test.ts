@@ -6,8 +6,8 @@ import { startJob } from "../src/start";
 import { finalizeJob, type ProcessFn } from "../src/finalize";
 import { createUser } from "./helpers";
 
-// A processing job with a hold placed, mirroring start.test.ts. Express reflow
-// at 0.9/page x 10 pages = 9_000 mcr held.
+// A processing job with a hold placed, mirroring start.test.ts. Reflow at
+// 0.7/page x 10 pages = 7_000 mcr held.
 async function processingJob(fundMcr = 20_000) {
   const userId = await createUser();
   await allocate(env.DB, { userId, amountMcr: fundMcr, note: null, createdBy: "adnan@thothica.com" });
@@ -44,7 +44,7 @@ const stubProcess: ProcessFn = async (input) => {
 describe("finalizeJob", () => {
   it("happy path: stores artifacts, captures the hold, marks ready, keeps the upload", async () => {
     const { userId, jobId, uploadKey } = await processingJob();
-    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000); // 20k - 9k hold
+    expect(await getBalanceMcr(env.DB, userId)).toBe(13_000); // 20k - 7k hold
 
     const outcome = await finalizeJob(env, jobId, stubProcess);
     expect(outcome).toBe("ready");
@@ -69,7 +69,7 @@ describe("finalizeJob", () => {
     expect(row!.finished_at).not.toBeNull();
 
     // Hold captured: the negative hold stands as the final charge, balance stays.
-    expect(await getBalanceMcr(env.DB, userId)).toBe(11_000);
+    expect(await getBalanceMcr(env.DB, userId)).toBe(13_000);
     // Original kept for ~72h after the result (R2 lifecycle expires it), so a bad
     // render can be reprocessed.
     expect(await (await env.STORE.get(uploadKey))!.text()).toBe("%PDF-fake");

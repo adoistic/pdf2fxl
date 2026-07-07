@@ -8,7 +8,7 @@
 
 Mistral OCR returns the words on a page but not their **bold / *italic* / <u>underline</u>**
 styling. This feature adds an opt-in **add-on** that, after normal OCR, runs one extra
-vision pass per page against a configurable OpenRouter model to recover that styling and
+vision pass per page against a configurable vision model to recover that styling and
 apply it to the output.
 
 It is **not a new mode**. It is a flag orthogonal to the existing Reflowable / Fixed modes,
@@ -73,7 +73,7 @@ ALTER TABLE jobs ADD COLUMN enrich_rate_mcr INTEGER;
 CREATE UNIQUE INDEX ux_ledger_system_refund ON credit_ledger(job_id)
   WHERE kind = 'allocation' AND created_by = 'system';
 
--- Surcharge rate and the OpenRouter model id (admin-editable without a redeploy).
+-- Surcharge rate and the hosted vision model id (admin-editable without a redeploy).
 -- enrich_model empty by default → add-on disabled end to end (§10).
 INSERT INTO config (key, value) VALUES ('rate_enrich_mcr', '200');
 INSERT INTO config (key, value) VALUES ('enrich_model', '');
@@ -154,14 +154,14 @@ DB-guaranteed unique per job by the index above.
 ## 6. Container enrichment pass
 
 Runs in `/process` after `convert_book_reflow` builds `doc.json`, before the response is
-assembled. Gated on `?enrich=1` **and** a non-empty model **and** a present OpenRouter key;
+assembled. Gated on `?enrich=1` **and** a non-empty model **and** a present vision-model API key;
 otherwise a no-op reporting `pages_enriched = 0`. If it throws unexpectedly it is caught and
 the book ships plain — fail-open on the add-on, never on the document.
 
 On hand in `/process`: `verbatim[i]` (page i's raw OCR, incl. per-block `content`), the
 built `Doc`, the PDF path (re-rasterize on demand), `cfg`.
 
-**Step A — per page, one OpenRouter call (concurrent, reusing `_OCR_CONCURRENCY`).**
+**Step A — per page, one the vision-model host call (concurrent, reusing `_OCR_CONCURRENCY`).**
 Re-rasterize page i (`rasterize_page` + `_trim`, one image at a time to bound memory),
 PNG-encode. Take page i's text blocks from `verbatim[i]` (each block's `content`, in OCR
 order) as a JSON array. Send image + array + the configured instruction; expect a
@@ -200,7 +200,7 @@ text is **sliced from the Doc's original run text**, so full text and whitespace
 preserved by construction and any engine-detected `bold` (from type-size) survives.
 
 **Step E — summary & billing.** A page is **enriched** (surcharge earned) iff its
-OpenRouter call succeeded and returned a structurally valid (correct-length) response — the
+the vision-model host call succeeded and returned a structurally valid (correct-length) response — the
 detection ran and we could use it. Individual block gate-failures skip that block but do not
 un-bill the page. A page is **not enriched** (refunded) iff the call errored after retries
 or the response was unusable. Return:
@@ -214,9 +214,9 @@ Absent `enrich` / unconfigured → `{ "requested": false, "pages_total": N,
 Billing keys on the **per-page gate over page-native block text** (a clean unit whose image
 and text always correspond), so the Doc's cross-page merging never mis-bills.
 
-**OpenRouter client.** A small `httpx` helper POSTing chat-completions with a vision message
+**the vision-model host client.** A small `httpx` helper POSTing chat-completions with a vision message
 (image data URL + text). Model id comes from the request (the Worker passes the config
-value); the key comes from the `x-openrouter-key` header (never logged). Timeout + bounded
+value); the key comes from the `x-enrich-key` header (never logged). Timeout + bounded
 retry mirror the OCR path. The instruction is a versioned constant in the container.
 
 ## 7. Engine change (underline) — minimal, additive
@@ -244,12 +244,12 @@ multiple runs per paragraph, so splitting one run into several is fully supporte
   `enrich_rate_mcr`; `startJob` resolves and snapshots it (incl. the count-skipping branch)
   and holds `(base+surcharge)×pages`.
 - **`finalize.ts`**: `realProcess` adds `enrich=1` + the model id to the `/process` query and
-  forwards `x-openrouter-key`; `FinalizeRow`/`toJob` read the new columns; after capture,
+  forwards `x-enrich-key`; `FinalizeRow`/`toJob` read the new columns; after capture,
   post the guarded per-page refund from `out.enrich`. `ProcessFn`'s return type gains an
   optional `enrich` summary; the finalize test fixture is updated.
 - **`index.ts` `/api/config`** (unauthenticated, already fetched at load): becomes async and
   returns `enrich: { available, rateCredits }` where
-  `available = Boolean(env.OPENROUTER_API_KEY) && (config.enrich_model is non-empty)` and
+  `available = Boolean(env.ENRICH_API_KEY) && (config.enrich_model is non-empty)` and
   `rateCredits = rate_enrich_mcr / 1000`. Single source of truth for both visibility and
   price.
 
@@ -265,9 +265,9 @@ multiple runs per paragraph, so splitting one run into several is fully supporte
 
 ## 10. Configuration & secrets (inputs required from Adnan)
 
-- **`OPENROUTER_API_KEY`** — Worker secret (`wrangler secret put`), forwarded to the
-  container as `x-openrouter-key`. Never logged, never returned.
-- **`enrich_model`** — OpenRouter model id in the D1 `config` table (changeable without a
+- **`ENRICH_API_KEY`** — Worker secret (`wrangler secret put`), forwarded to the
+  container as `x-enrich-key`. Never logged, never returned.
+- **`enrich_model`** — vision-model id in the D1 `config` table (changeable without a
   redeploy). Empty by default → add-on disabled.
 - **Instruction/prompt** — exact wording, versioned as a reviewed constant in the container.
   Placeholder until provided.
@@ -285,7 +285,7 @@ dark and lights up when Adnan sets the two values and supplies the prompt.
   existing `bold/italic/underline`; enrichment can only add.
 - **Nested / overlapping / unbalanced tags** → per-style open-counters flatten proper
   nesting; unbalanced/unclosed → block rejected.
-- **OpenRouter down / key missing / model empty** → pass no-ops → `pages_enriched = 0` →
+- **the vision-model host down / key missing / model empty** → pass no-ops → `pages_enriched = 0` →
   full surcharge refunded → normal OCR at base price.
 - **Cross-page merged / de-hyphenated paragraphs** → alignment maps what it can, drops the
   rest → reduced recall, never corruption, never mis-billing (billing is per-page on
@@ -299,7 +299,7 @@ dark and lights up when Adnan sets the two values and supplies the prompt.
 
 ## 12. Testing plan
 
-**Container (pytest, stubbed OpenRouter — no network/key):**
+**Container (pytest, stubbed the vision-model host — no network/key):**
 - Tag-split: a block returned with `<b>`/`<i>`/`<u>` yields the right styled sub-runs;
   proper nesting (`<b>x<i>y</i></b>`) flattens to per-char styles.
 - Gate rejects: changed word, dropped word, reflowed whitespace, an HTML entity, an
@@ -328,15 +328,15 @@ dark and lights up when Adnan sets the two values and supplies the prompt.
 1. Migration `0005_enrich.sql` applied to D1 (remote).
 2. Container rebuilt (enrichment module + underline change) and deployed.
 3. Worker deployed with new routes/pricing/refund.
-4. Ships **dark**: `enrich_model` empty, no OpenRouter secret → checkbox hidden, behavior
+4. Ships **dark**: `enrich_model` empty, no the vision-model host secret → checkbox hidden, behavior
    identical to today.
-5. Adnan sets `OPENROUTER_API_KEY` + `enrich_model` and supplies the prompt → add-on lights
+5. Adnan sets `ENRICH_API_KEY` + `enrich_model` and supplies the prompt → add-on lights
    up; a live end-to-end test on a small styled PDF confirms emphasis and the correct
    charge/refund.
 
 ## 14. Open questions / future
 
-- Exact OpenRouter model + prompt wording (Adnan to provide; placeholders until then).
+- Exact vision model + prompt wording (Adnan to provide; placeholders until then).
 - Future recall: fall back from exact alignment to fuzzy phrase search; emphasis in
   headings/captions; a model-confidence threshold.
 - Future UX: show "N pages enriched" in the job detail so the user sees what the surcharge

@@ -1,8 +1,8 @@
 import type { Env } from "./types";
 
 // Single source of truth for the emphasis add-on's runtime state. The add-on is
-// available only when BOTH an OpenRouter key is configured (a Worker secret) AND
-// an OpenRouter model id is set in the config table. Until both hold, the upload
+// available only when BOTH the vision-model API key is configured (a Worker
+// secret) AND a model id is set in the config table. Until both hold, the upload
 // checkbox is hidden (/api/config) and POST /api/jobs rejects enrich=1.
 export async function enrichConfig(
   env: Env
@@ -13,6 +13,6 @@ export async function enrichConfig(
   const map = new Map(results.map((r) => [r.key, r.value]));
   const model = (map.get("enrich_model") ?? "").trim();
   const rateMcr = Number(map.get("rate_enrich_mcr") ?? "0");
-  const available = Boolean(env.OPENROUTER_API_KEY) && model !== "";
+  const available = Boolean(env.ENRICH_API_KEY) && model !== "";
   return { available, rateMcr, rateCredits: rateMcr / 1000, model };
 }

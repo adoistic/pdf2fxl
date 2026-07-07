@@ -27,12 +27,12 @@ describe("countJob", () => {
   it("stores page count and rate, charges nothing", async () => {
     const { userId, job } = await receivedJob({ fundMcr: 50_000 });
     const res = await countJob(env.DB, env.STORE, tenPages, job.id, userId);
-    expect(res).toEqual({ ok: true, pageCount: 10, rateMcr: 900, creditsMcr: 9_000 });
+    expect(res).toEqual({ ok: true, pageCount: 10, rateMcr: 700, creditsMcr: 7_000 });
     expect(await getBalanceMcr(env.DB, userId)).toBe(50_000); // no hold placed
     const after = await getJobForUser(env.DB, job.id, userId);
     expect(after!.status).toBe("received"); // not started
     expect(after!.pageCount).toBe(10);
-    expect(after!.rateMcr).toBe(900);
+    expect(after!.rateMcr).toBe(700);
     expect(after!.holdId).toBeNull();
   });
 
@@ -46,7 +46,7 @@ describe("countJob", () => {
     const { userId, job } = await receivedJob();
     await countJob(env.DB, env.STORE, tenPages, job.id, userId);
     const again = await countJob(env.DB, env.STORE, explode, job.id, userId);
-    expect(again).toEqual({ ok: true, pageCount: 10, rateMcr: 900, creditsMcr: 9_000 });
+    expect(again).toEqual({ ok: true, pageCount: 10, rateMcr: 700, creditsMcr: 7_000 });
   });
 
   it("fails the job cleanly on an unreadable file, no charge", async () => {
@@ -64,8 +64,8 @@ describe("countJob", () => {
     await countJob(env.DB, env.STORE, tenPages, job.id, userId);
     // explode() throws if called; start must use the stored count instead.
     const res = await startJob(env.DB, env.STORE, explode, job.id, userId);
-    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 9_000 });
-    expect(await getBalanceMcr(env.DB, userId)).toBe(41_000); // one hold of 9000
+    expect(res).toEqual({ ok: true, pageCount: 10, heldMcr: 7_000 });
+    expect(await getBalanceMcr(env.DB, userId)).toBe(43_000); // one hold of 7000
     const after = await getJobForUser(env.DB, job.id, userId);
     expect(after!.status).toBe("processing");
   });
