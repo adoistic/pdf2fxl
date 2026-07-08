@@ -37,20 +37,47 @@ admin.post("/credits", async (c) => {
   return c.json({ email, balanceMcr, balance: balanceMcr / MCR_PER_CREDIT });
 });
 
+// Flip the hidden translation option for one reader. Upserts by email like
+// /credits, so the option can be granted before the person ever signs in.
+admin.post("/users/translate", async (c) => {
+  const body = await c.req
+    .json<{ email?: unknown; enabled?: unknown }>()
+    .catch(() => null);
+  const email = typeof body?.email === "string" ? body.email.toLowerCase().trim() : "";
+  const enabled = body?.enabled;
+  if (!email.includes("@") || email.length > 254 || /\s/.test(email) || typeof enabled !== "boolean") {
+    return c.json({ error: "invalid request" }, 400);
+  }
+  const userRow = await c.env.DB.prepare(
+    "INSERT INTO users (email) VALUES (?1) ON CONFLICT(email) DO UPDATE SET email = excluded.email RETURNING id"
+  )
+    .bind(email)
+    .first<{ id: number }>();
+  await c.env.DB.prepare("UPDATE users SET translate_enabled = ?1 WHERE id = ?2")
+    .bind(enabled ? 1 : 0, userRow!.id)
+    .run();
+  return c.json({ email, translateEnabled: enabled });
+});
+
 admin.get("/users", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.is_admin, COALESCE(SUM(l.amount_mcr), 0) AS balance_mcr
+    `SELECT u.id, u.email, u.name, u.is_admin, u.translate_enabled,
+            COALESCE(SUM(l.amount_mcr), 0) AS balance_mcr
      FROM users u
      LEFT JOIN credit_ledger l ON l.user_id = u.id
      GROUP BY u.id
      ORDER BY u.id DESC`
-  ).all<{ id: number; email: string; name: string | null; is_admin: number; balance_mcr: number }>();
+  ).all<{
+    id: number; email: string; name: string | null; is_admin: number;
+    translate_enabled: number; balance_mcr: number;
+  }>();
   return c.json({
     users: results.map((r) => ({
       id: r.id,
       email: r.email,
       name: r.name,
       isAdmin: r.is_admin === 1,
+      translateEnabled: r.translate_enabled === 1,
       balance: r.balance_mcr / MCR_PER_CREDIT,
     })),
   });

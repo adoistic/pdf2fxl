@@ -4,9 +4,11 @@ import { adminRequired, authRequired } from "./auth";
 import { getBalanceMcr, MCR_PER_CREDIT } from "./ledger";
 import { admin } from "./routes/admin";
 import { jobs } from "./routes/jobs";
+import { translate } from "./routes/translate";
 import { handleQueue } from "./finalize";
 import { r2DirectEnabled } from "./presign";
 import { enrichConfig } from "./enrich";
+import { translateConfig } from "./translate";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
@@ -35,18 +37,40 @@ app.use("/api/me", authRequired);
 app.get("/api/me", async (c) => {
   const user = c.get("user");
   const balanceMcr = await getBalanceMcr(c.env.DB, user.id);
+  // The translation add-on is invisible unless the admin flipped this user's
+  // flag AND the add-on is configured; only then does /api/me carry its terms.
+  let translate = null;
+  const flag = await c.env.DB
+    .prepare("SELECT translate_enabled FROM users WHERE id = ?1")
+    .bind(user.id)
+    .first<{ translate_enabled: number }>();
+  if (flag?.translate_enabled === 1) {
+    const cfg = await translateConfig(c.env);
+    if (cfg.available) {
+      translate = {
+        maxWords: cfg.maxWords,
+        blockWords: cfg.blockWords,
+        blockCredits: cfg.blockMcr / MCR_PER_CREDIT,
+      };
+    }
+  }
   return c.json({
     email: user.email,
     name: user.name,
     isAdmin: user.isAdmin,
     balanceMcr,
     balance: balanceMcr / MCR_PER_CREDIT,
+    translate,
   });
 });
 
 app.use("/api/jobs", authRequired);
 app.use("/api/jobs/*", authRequired);
 app.route("/api/jobs", jobs);
+
+app.use("/api/translate", authRequired);
+app.use("/api/translate/*", authRequired);
+app.route("/api/translate", translate);
 
 app.use("/api/admin/*", authRequired, adminRequired);
 app.route("/api/admin", admin);

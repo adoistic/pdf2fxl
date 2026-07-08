@@ -97,6 +97,7 @@
       <img class="app__logo" src="/thothica-logo.png" alt="Thothica">
       <span class="app__spacer"></span>
       <nav class="app__account" aria-label="Account">
+        <a id="translate-link" class="app__admin" href="#translate" hidden>Translate</a>
         <a id="admin-link" class="app__admin" href="#admin" hidden>Admin</a>
         <span id="balance-chip" class="balance" hidden>
           <span class="balance__dot" aria-hidden="true"></span>
@@ -226,6 +227,99 @@
 
       </div>
     </main>
+  </section>
+
+  <section id="translate-view" class="app translate" hidden>
+    <header class="app__bar">
+      <img class="app__logo" src="/thothica-logo.png" alt="Thothica">
+      <span class="app__admin-tag">Translate</span>
+      <span class="app__spacer"></span>
+      <nav class="app__account" aria-label="Account">
+        <a id="translate-back-link" class="app__admin" href="#">Back to editions</a>
+        <span id="translate-balance-chip" class="balance">
+          <span class="balance__dot" aria-hidden="true"></span>
+          <span id="translate-balance-amount"></span>
+        </span>
+        <span id="translate-email" class="app__email"></span>
+      </nav>
+      <button id="translate-sign-out-button" class="btn btn--ghost" type="button">Sign out</button>
+    </header>
+
+    <main class="app__main">
+      <div class="app__grid">
+
+        <section class="panel panel--translate reveal d1" aria-labelledby="translate-heading">
+          <h2 id="translate-heading" class="panel__title">Translate</h2>
+          <p class="panel__sub">Paste text or pick a finished edition, choose a language, and we keep the structure intact.</p>
+
+          <div class="trtabs" role="tablist" aria-label="What to translate">
+            <button id="trtab-text" class="trtab is-active" type="button" role="tab" aria-selected="true">Paste text</button>
+            <button id="trtab-book" class="trtab" type="button" role="tab" aria-selected="false">One of your books</button>
+          </div>
+
+          <div id="translate-text-field" class="upload__field">
+            <label class="field-label" for="translate-text">Your text</label>
+            <textarea id="translate-text" class="field field--area" rows="9"
+                      placeholder="Paste the text you want translated. Markdown structure is kept as it is."></textarea>
+          </div>
+
+          <div id="translate-book-field" class="upload__field" hidden>
+            <label class="field-label" for="translate-book">Book</label>
+            <select id="translate-book" class="field field--select">
+              <option value="">Choose a finished edition</option>
+            </select>
+            <p class="field-hint">Only editions that are ready can be translated. The translated text goes back into the same places, so headings, tables and figures stay where they belong.</p>
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="translate-language">Translate into</label>
+            <select id="translate-language" class="field field--select"></select>
+          </div>
+
+          <div class="upload__actions">
+            <button id="translate-button" class="btn btn--primary" type="button">Translate</button>
+            <p id="translate-price" class="upload__rate"></p>
+          </div>
+
+          <p id="translate-status" class="upload-status" role="status" hidden></p>
+        </section>
+
+        <section class="jobs reveal d2" aria-labelledby="translations-heading">
+          <div class="jobs__head">
+            <h2 id="translations-heading" class="panel__title">Your translations</h2>
+            <span id="translations-count" class="jobs__count" hidden></span>
+          </div>
+          <div id="translations-list" class="jobs__list" aria-live="polite"></div>
+        </section>
+
+      </div>
+    </main>
+
+    <div id="translation-drawer" class="drawer" hidden>
+      <div class="drawer__scrim" data-translation-close></div>
+      <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="translation-title">
+        <header class="drawer__head">
+          <div class="drawer__heading">
+            <h2 id="translation-title" class="drawer__title">Translation</h2>
+            <p id="translation-sub" class="drawer__sub"></p>
+          </div>
+          <button id="translation-close" class="drawer__close" type="button" aria-label="Close translation"
+                  data-translation-close>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </header>
+        <div class="drawer__body">
+          <div class="trresult__actions">
+            <button id="translation-copy" class="download-btn" type="button">Copy text</button>
+            <span id="translation-downloads"></span>
+          </div>
+          <pre id="translation-text-body" class="trresult__text" aria-live="polite"></pre>
+        </div>
+      </aside>
+    </div>
   </section>
 
   <section id="admin-view" class="app admin" hidden>

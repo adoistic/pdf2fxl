@@ -34,6 +34,8 @@ from pdf2fxl.reflow.pipeline_reflow import convert_book_reflow  # noqa: E402
 from pdf2fxl.reflow.render_docx import render_docx  # noqa: E402
 from pdf2fxl.reflow.render_epub_reflow import write_epub_reflow  # noqa: E402
 from pdf2fxl.reflow.render_md import render_markdown  # noqa: E402
+from pdf2fxl.translate import engine as translate_engine  # noqa: E402
+from pdf2fxl.translate.engine import TranslationError  # noqa: E402
 import enrich  # noqa: E402  (container-local emphasis enrichment module)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -321,3 +323,66 @@ def _read_json(path: Path) -> dict:
     import json
 
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+# --------------------------------------------------------------------------- #
+# Translation (embedded corpus engine; see src/pdf2fxl/translate)
+# --------------------------------------------------------------------------- #
+def _translate_source(body: dict) -> tuple:
+    """(kind, payload, word_count) for a translate/quote body, or 422."""
+    kind = body.get("kind")
+    if kind == "text":
+        text = str(body.get("text") or "")
+        return kind, text, translate_engine.count_words(text)
+    if kind == "doc":
+        doc_json = body.get("doc_json")
+        if not isinstance(doc_json, dict):
+            raise HTTPException(status_code=422, detail="invalid document")
+        return kind, doc_json, translate_engine.doc_word_count(doc_json)
+    raise HTTPException(status_code=422, detail="unknown source kind")
+
+
+@app.post("/translate/quote")
+async def translate_quote(request: Request) -> dict:
+    """Canonical word count for pricing. The Worker prices and caps from this
+    number, so billing and the engine can never disagree on what a word is."""
+    body = await request.json()
+    _, _, words = _translate_source(body)
+    return {"word_count": words}
+
+
+@app.post("/translate")
+async def translate(request: Request) -> dict:
+    """Translate pasted markdown or a stored document into a target language.
+
+    The Worker owns credits and gating; this endpoint is pure compute. The
+    model id arrives per request (config-driven, like enrichment) and the
+    provider key arrives in x-translate-key, never stored here.
+    """
+    body = await request.json()
+    kind, payload, words = _translate_source(body)
+    target = str(body.get("target_language") or "").strip()
+    model = str(body.get("model") or "").strip()
+    api_key = request.headers.get("x-translate-key", "")
+    if not target or not model or not api_key:
+        raise HTTPException(status_code=422, detail="invalid translation request")
+    max_words = body.get("max_words")
+    if isinstance(max_words, int) and 0 < max_words < words:
+        raise HTTPException(status_code=413, detail="too many words")
+
+    try:
+        if kind == "text":
+            out = translate_engine.translate_markdown(
+                payload, target, model=model, api_key=api_key,
+                call=translate_engine.call_translate_model)
+        else:
+            out = translate_engine.translate_doc(
+                payload, target, model=model, api_key=api_key,
+                call=translate_engine.call_translate_model)
+    except TranslationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # never leak the key or an internal trace
+        raise HTTPException(status_code=422, detail="translation failed") from exc
+    return {"word_count": words, **out}

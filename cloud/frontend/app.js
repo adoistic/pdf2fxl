@@ -61,6 +61,31 @@ const bulkProcNote = document.getElementById("bulk-proc-note");
 const jobsList = document.getElementById("jobs-list");
 const jobsCount = document.getElementById("jobs-count");
 
+const translateView = document.getElementById("translate-view");
+const translateLink = document.getElementById("translate-link");
+const translateBackLink = document.getElementById("translate-back-link");
+const translateEmail = document.getElementById("translate-email");
+const translateBalanceAmount = document.getElementById("translate-balance-amount");
+const translateSignOutButton = document.getElementById("translate-sign-out-button");
+const trTabText = document.getElementById("trtab-text");
+const trTabBook = document.getElementById("trtab-book");
+const translateTextField = document.getElementById("translate-text-field");
+const translateText = document.getElementById("translate-text");
+const translateBookField = document.getElementById("translate-book-field");
+const translateBook = document.getElementById("translate-book");
+const translateLanguage = document.getElementById("translate-language");
+const translateButton = document.getElementById("translate-button");
+const translatePrice = document.getElementById("translate-price");
+const translateStatus = document.getElementById("translate-status");
+const translationsList = document.getElementById("translations-list");
+const translationsCount = document.getElementById("translations-count");
+const translationDrawer = document.getElementById("translation-drawer");
+const translationSub = document.getElementById("translation-sub");
+const translationCopy = document.getElementById("translation-copy");
+const translationDownloads = document.getElementById("translation-downloads");
+const translationTextBody = document.getElementById("translation-text-body");
+const translationClose = document.getElementById("translation-close");
+
 const adminView = document.getElementById("admin-view");
 const adminEmail = document.getElementById("admin-email");
 const adminBackLink = document.getElementById("admin-back-link");
@@ -81,7 +106,7 @@ const ledgerClose = document.getElementById("ledger-close");
 // Per page prices, in credits. Keep in sync with cloud/worker/src/ledger.ts.
 const RATES = { reflow: 0.7, fixed: 3.0 };
 // Emphasis add-on: availability + per-page surcharge come from /api/config so the
-// checkbox only shows when an OpenRouter model + key are configured server-side.
+// checkbox only shows when a model + key are configured server-side.
 let enrichAvailable = false;
 let enrichRate = 0.2;
 
@@ -125,6 +150,8 @@ const FIXTURE_ME = {
   name: "Preview Reader",
   isAdmin: true,
   balance: 42.7,
+  // Present so the hidden Translate view can be screenshotted via fixtures.
+  translate: { maxWords: 2000, blockWords: 350, blockCredits: 500 },
 };
 
 const FIXTURE_JOBS = [
@@ -184,35 +211,51 @@ function showLogin() {
   loginView.hidden = false;
   appView.hidden = true;
   adminView.hidden = true;
+  translateView.hidden = true;
   stopPolling();
+  stopTranslatePolling();
 }
 
 function showApp() {
   loginView.hidden = true;
   adminView.hidden = true;
+  translateView.hidden = true;
   appView.hidden = false;
 }
 
 function showAdmin() {
   loginView.hidden = true;
   appView.hidden = true;
+  translateView.hidden = true;
   adminView.hidden = false;
 }
 
-// Routes the current hash to a view. Only #admin, and only for admins with a
-// live session, reaches the admin view; everything else falls back to the app.
+function showTranslate() {
+  loginView.hidden = true;
+  appView.hidden = true;
+  adminView.hidden = true;
+  translateView.hidden = false;
+}
+
+// Routes the current hash to a view. Only #admin (admins) and #translate
+// (readers the backend enabled) leave the app view; everything else falls
+// back to it, and a stale hash is dropped so the option stays invisible.
 function routeHash() {
   if (!sessionReady) return;
   if (location.hash === "#admin" && sessionIsAdmin) {
     showAdmin();
     loadAdminData();
-  } else {
-    if (location.hash === "#admin") {
-      // non admin (or stale hash): drop it so the app view is clean
-      history.replaceState(null, "", location.pathname + location.search);
-    }
-    showApp();
+    return;
   }
+  if (location.hash === "#translate" && sessionTranslate) {
+    showTranslate();
+    loadTranslateData();
+    return;
+  }
+  if (location.hash === "#admin" || location.hash === "#translate") {
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  showApp();
 }
 
 // Attaches the current user's Firebase ID token as a Bearer token, parses the
@@ -256,15 +299,23 @@ export async function api(path, opts = {}) {
 // ---------------------------------------------------------------------------
 let currentBalance = null;
 
+// The hidden translation option: null unless the backend enabled it for this
+// account. When set it carries the terms {maxWords, blockWords, blockCredits}.
+let sessionTranslate = null;
+
 function renderMe(me) {
   currentBalance = me.balance;
   balanceAmount.textContent = `${me.balance.toFixed(1)} credits`;
   balanceChip.hidden = false;
   sessionIsAdmin = !!me.isAdmin;
   adminLink.hidden = !me.isAdmin;
+  sessionTranslate = me.translate || null;
+  translateLink.hidden = !sessionTranslate;
+  translateBalanceAmount.textContent = `${me.balance.toFixed(1)} credits`;
   if (me.email) {
     userEmail.textContent = me.email;
     adminEmail.textContent = me.email;
+    translateEmail.textContent = me.email;
   }
 }
 
@@ -1524,6 +1575,426 @@ function wireUploadPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// Translate view. Hidden unless /api/me carries the translate terms (the
+// backend enables it per reader). Paste text or pick a ready edition, choose
+// a language, see the live price, and read the result in a drawer.
+// ---------------------------------------------------------------------------
+const LANGUAGE_GROUPS = [
+  ["English", ["English"]],
+  ["Indian languages", [
+    "Assamese", "Bengali", "Bodo", "Dogri", "Gujarati", "Hindi", "Kannada",
+    "Kashmiri", "Konkani", "Maithili", "Malayalam", "Manipuri", "Marathi",
+    "Nepali", "Odia", "Punjabi", "Sanskrit", "Santali", "Sindhi", "Tamil",
+    "Telugu", "Urdu",
+  ]],
+  ["Wider South Asia", [
+    "Awadhi", "Balochi", "Bhojpuri", "Brahui", "Chhattisgarhi", "Dari",
+    "Dhivehi", "Dzongkha", "Garo", "Haryanvi", "Khasi", "Magahi", "Mizo",
+    "Pashto", "Rajasthani", "Sinhala", "Tulu",
+  ]],
+  ["World languages", [
+    "Arabic", "Bahasa Indonesia", "Bahasa Malaysia", "Burmese",
+    "Chinese (Simplified)", "Chinese (Traditional)", "Czech", "Danish",
+    "Dutch", "Filipino", "Finnish", "French", "German", "Greek", "Hebrew",
+    "Hungarian", "Italian", "Japanese", "Khmer", "Korean", "Lao", "Norwegian",
+    "Persian", "Polish", "Portuguese", "Romanian", "Russian", "Spanish",
+    "Swahili", "Swedish", "Thai", "Turkish", "Ukrainian", "Vietnamese",
+  ]],
+];
+
+const TRANSLATION_STATUS_LABELS = {
+  received: "Received",
+  processing: "Translating",
+  ready: "Ready",
+  failed: "Failed",
+};
+
+let translateSource = "text"; // "text" | "book"
+let bookQuote = null;          // last server quote for the selected book
+let translatePollTimer = null;
+
+function stopTranslatePolling() {
+  if (translatePollTimer) {
+    clearTimeout(translatePollTimer);
+    translatePollTimer = null;
+  }
+}
+
+function populateLanguages() {
+  if (translateLanguage.options.length > 0) return;
+  for (const [group, langs] of LANGUAGE_GROUPS) {
+    const og = document.createElement("optgroup");
+    og.label = group;
+    for (const lang of langs) {
+      const opt = document.createElement("option");
+      opt.value = lang;
+      opt.textContent = lang;
+      og.appendChild(opt);
+    }
+    translateLanguage.appendChild(og);
+  }
+  translateLanguage.value = "Hindi";
+}
+
+// Price in credits for a word count, mirroring the server's rounding: prorated
+// per word, rounded half up to two decimal places of a credit.
+function translateCreditsFor(words) {
+  if (!sessionTranslate) return 0;
+  const mcr = Math.round(
+    (words * sessionTranslate.blockCredits * 1000) / sessionTranslate.blockWords / 10
+  ) * 10;
+  return mcr / 1000;
+}
+
+// A quick local word count for the live note while typing. The server's count
+// (which ignores markdown syntax) is the one that is billed, so this reads as
+// "about". CJK scripts count per character, like the server.
+function localWordCount(text) {
+  const cjk = (text.match(/[぀-ヿ㐀-䶿一-鿿가-힯]/g) || []).length;
+  const rest = text
+    .replace(/[぀-ヿ㐀-䶿一-鿿가-힯]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  return rest + cjk;
+}
+
+function setTranslateTab(which) {
+  translateSource = which;
+  trTabText.classList.toggle("is-active", which === "text");
+  trTabBook.classList.toggle("is-active", which === "book");
+  trTabText.setAttribute("aria-selected", which === "text" ? "true" : "false");
+  trTabBook.setAttribute("aria-selected", which === "book" ? "true" : "false");
+  translateTextField.hidden = which !== "text";
+  translateBookField.hidden = which !== "book";
+  updateTranslatePrice();
+}
+
+function updateTranslatePrice() {
+  if (!sessionTranslate) return;
+  const max = sessionTranslate.maxWords;
+  let words = null;
+  let about = false;
+  if (translateSource === "text") {
+    const text = translateText.value;
+    words = text.trim() ? localWordCount(text) : 0;
+    about = true;
+  } else if (bookQuote) {
+    words = bookQuote.words;
+  }
+  translateButton.disabled = false;
+  if (words == null || words === 0) {
+    translatePrice.textContent =
+      `500 credits per 350 words, up to ${max.toLocaleString("en")} words at a time.`;
+    return;
+  }
+  const price = translateCreditsFor(words).toFixed(2);
+  if (words > max) {
+    translatePrice.textContent =
+      `Sorry, that is not possible right now: this is ${about ? "about " : ""}` +
+      `${words.toLocaleString("en")} words, and translations are capped at ` +
+      `${max.toLocaleString("en")} words for now.`;
+    translateButton.disabled = true;
+    return;
+  }
+  translatePrice.textContent =
+    `${about ? "About " : ""}${words.toLocaleString("en")} words, ` +
+    `${price} credits.`;
+}
+
+function showTranslateStatus(message, kind) {
+  translateStatus.textContent = message;
+  translateStatus.classList.toggle("upload-status--error", kind === "error");
+  translateStatus.hidden = false;
+}
+
+// Ready editions for the "one of your books" source.
+async function populateBookChoices() {
+  let jobs = [];
+  try {
+    const data = previewFixtures ? { jobs: FIXTURE_JOBS } : await api("/api/jobs");
+    jobs = (data.jobs || []).filter((j) => j.status === "ready");
+  } catch (err) {
+    console.error("failed to load editions for translate", err);
+  }
+  const current = translateBook.value;
+  translateBook.replaceChildren();
+  const first = document.createElement("option");
+  first.value = "";
+  first.textContent = jobs.length ? "Choose a finished edition" : "No finished editions yet";
+  translateBook.appendChild(first);
+  for (const job of jobs) {
+    const opt = document.createElement("option");
+    opt.value = job.id;
+    opt.textContent = job.title || "Untitled scan";
+    translateBook.appendChild(opt);
+  }
+  if (current && jobs.some((j) => j.id === current)) translateBook.value = current;
+}
+
+async function quoteSelectedBook() {
+  bookQuote = null;
+  updateTranslatePrice();
+  const jobId = translateBook.value;
+  if (!jobId || previewFixtures) return;
+  translatePrice.textContent = "Counting the words...";
+  try {
+    bookQuote = await api("/api/translate/quote", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "book", jobId }),
+    });
+  } catch (err) {
+    console.error("quote failed", err);
+    showTranslateStatus(`${sentence(err.message)}.`, "error");
+  }
+  updateTranslatePrice();
+}
+
+async function submitTranslation() {
+  translateStatus.hidden = true;
+  const targetLanguage = translateLanguage.value;
+  let body;
+  if (translateSource === "text") {
+    const text = translateText.value;
+    if (!text.trim()) {
+      showTranslateStatus("Paste some text first, then we can begin.", "error");
+      return;
+    }
+    body = { kind: "text", text, targetLanguage };
+  } else {
+    const jobId = translateBook.value;
+    if (!jobId) {
+      showTranslateStatus("Choose a finished edition first.", "error");
+      return;
+    }
+    body = { kind: "book", jobId, targetLanguage };
+  }
+
+  translateButton.disabled = true;
+  const restLabel = translateButton.textContent;
+  translateButton.textContent = "Starting...";
+  try {
+    const t = await api("/api/translate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    showTranslateStatus(
+      `Translating into ${t.targetLanguage}. ${Number(t.words).toLocaleString("en")} words, ` +
+      `${Number(t.credits).toFixed(2)} credits held.`
+    );
+    if (translateSource === "text") translateText.value = "";
+    bookQuote = null;
+    updateTranslatePrice();
+    await refreshTranslations();
+    await refreshMe();
+  } catch (err) {
+    showTranslateStatus(`${sentence(err.message)}.`, "error");
+  } finally {
+    translateButton.disabled = false;
+    translateButton.textContent = restLabel;
+    updateTranslatePrice();
+  }
+}
+
+function renderTranslationRow(t) {
+  const row = el("article", "job");
+  const main = el("div", "job__main");
+  const label = t.kind === "book" ? (t.title || "Untitled scan") : "Pasted text";
+  main.appendChild(el("h3", "job__title", `${label} into ${t.targetLanguage}`));
+
+  const meta = [];
+  if (t.words) meta.push(t.words === 1 ? "1 word" : `${Number(t.words).toLocaleString("en")} words`);
+  if (t.credits != null) meta.push(`${Number(t.credits).toFixed(2)} credits`);
+  const ago = timeAgo(t.createdAt);
+  if (ago) meta.push(ago);
+  main.appendChild(el("p", "job__meta", meta.join("  ·  ")));
+
+  if (t.status === "failed" && t.error) {
+    main.appendChild(el("p", "job__error", sentence(t.error)));
+  }
+
+  if (t.status === "ready") {
+    const wrap = el("div", "downloads");
+    const readBtn = el("button", "download-btn", "Read");
+    readBtn.type = "button";
+    readBtn.addEventListener("click", () => openTranslation(t));
+    wrap.appendChild(readBtn);
+    const formats = t.kind === "book"
+      ? [["md", "Markdown"], ["epub", "EPUB"], ["docx", "Word"]]
+      : [["md", "Markdown"]];
+    for (const [format, label2] of formats) {
+      const btn = el("button", "download-btn", label2);
+      btn.type = "button";
+      btn.addEventListener("click", () => downloadTranslation(t, format, btn));
+      wrap.appendChild(btn);
+    }
+    main.appendChild(wrap);
+  }
+  row.appendChild(main);
+
+  const chip = el("span", `status ${statusClass(t.status)}`.trim());
+  chip.appendChild(el("span", "status__dot"));
+  chip.appendChild(document.createTextNode(TRANSLATION_STATUS_LABELS[t.status] || t.status));
+  row.appendChild(chip);
+  return row;
+}
+
+function renderTranslations(list) {
+  translationsList.replaceChildren();
+  if (list.length === 0) {
+    translationsCount.hidden = true;
+    const empty = el("div", "empty");
+    empty.appendChild(el("h3", "empty__title", "Your first translation goes here."));
+    empty.appendChild(el("p", "empty__body",
+      "Paste some text or pick a finished edition, choose a language, and the result keeps the original structure."));
+    translationsList.appendChild(empty);
+  } else {
+    translationsCount.hidden = false;
+    translationsCount.textContent =
+      list.length === 1 ? "1 translation" : `${list.length} translations`;
+    for (const t of list) translationsList.appendChild(renderTranslationRow(t));
+  }
+  stopTranslatePolling();
+  if (previewFixtures) return;
+  if (list.some((t) => t.status === "received" || t.status === "processing")) {
+    translatePollTimer = setTimeout(async () => {
+      translatePollTimer = null;
+      try {
+        await refreshTranslations();
+        await refreshMe();
+      } catch (err) {
+        console.error("translation poll failed", err);
+      }
+    }, 5_000);
+  }
+}
+
+async function refreshTranslations() {
+  if (previewFixtures) {
+    renderTranslations(FIXTURE_TRANSLATIONS);
+    return;
+  }
+  const data = await api("/api/translate");
+  renderTranslations(data.translations || []);
+}
+
+async function loadTranslateData() {
+  populateLanguages();
+  updateTranslatePrice();
+  try {
+    await Promise.all([refreshTranslations(), populateBookChoices()]);
+  } catch (err) {
+    console.error("failed to load translations", err);
+  }
+}
+
+async function openTranslation(t) {
+  translationSub.textContent =
+    `${t.kind === "book" ? (t.title || "Untitled scan") : "Pasted text"} into ${t.targetLanguage}`;
+  translationTextBody.textContent = "Loading...";
+  translationDownloads.replaceChildren();
+  translationDrawer.hidden = false;
+  document.body.style.overflow = "hidden";
+  translationClose.focus();
+  try {
+    const data = previewFixtures
+      ? { markdown: FIXTURE_TRANSLATION_MD }
+      : await api(`/api/translate/${t.id}/result`);
+    translationTextBody.textContent = data.markdown || "";
+  } catch (err) {
+    console.error("failed to load translation", err);
+    translationTextBody.textContent = "We could not load this translation. Try again in a moment.";
+  }
+}
+
+function closeTranslation() {
+  translationDrawer.hidden = true;
+  document.body.style.overflow = "";
+}
+
+// Same bearer + blob dance as edition downloads: a plain link cannot carry
+// the token, and md may answer with a 302 to storage.
+async function downloadTranslation(t, format, button) {
+  button.disabled = true;
+  const restLabel = button.textContent;
+  button.textContent = "Preparing...";
+  try {
+    const token = await getToken();
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(
+      `/api/translate/${t.id}/download?format=${format}`,
+      { headers, redirect: "follow" }
+    );
+    if (!response.ok) throw new Error(`request failed (${response.status})`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    const base = (t.title || t.targetLanguage || "translation")
+      .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "translation";
+    anchor.download = `${base}.${format}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("translation download failed", err);
+  } finally {
+    button.disabled = false;
+    button.textContent = restLabel;
+  }
+}
+
+function wireTranslatePanel() {
+  trTabText.addEventListener("click", () => setTranslateTab("text"));
+  trTabBook.addEventListener("click", () => setTranslateTab("book"));
+  translateText.addEventListener("input", updateTranslatePrice);
+  translateBook.addEventListener("change", () => {
+    quoteSelectedBook().catch((err) => console.error("quote failed", err));
+  });
+  translateButton.addEventListener("click", () => {
+    submitTranslation().catch((err) => console.error("translate failed", err));
+  });
+  translateBackLink.addEventListener("click", (event) => {
+    event.preventDefault();
+    history.replaceState(null, "", location.pathname + location.search);
+    showApp();
+  });
+  translateSignOutButton.addEventListener("click", async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.error("sign out failed", err);
+    }
+  });
+  translationDrawer.addEventListener("click", (event) => {
+    if (event.target.closest("[data-translation-close]")) closeTranslation();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !translationDrawer.hidden) closeTranslation();
+  });
+}
+
+// Fixture data for the visual pass (`?preview-fixtures=translate`).
+const FIXTURE_TRANSLATIONS = [
+  { id: "ft-1", kind: "text", jobId: null, targetLanguage: "Hindi", status: "processing",
+    title: null, words: 355, credits: 507.14, error: null, createdAt: agoIso(40 * 1000) },
+  { id: "ft-2", kind: "book", jobId: "fx-b2", targetLanguage: "Urdu", status: "ready",
+    title: "The Deccan Sultanates", words: 1840, credits: 2628.57, error: null,
+    createdAt: agoIso(50 * 60 * 1000) },
+  { id: "ft-3", kind: "text", jobId: null, targetLanguage: "Tamil", status: "failed",
+    title: null, words: 620, credits: 885.71,
+    error: "something went wrong while translating, your credits were not charged",
+    createdAt: agoIso(3 * 60 * 60 * 1000) },
+];
+
+const FIXTURE_TRANSLATION_MD =
+  "# دکن کی سلطنتیں\n\nیہ ایک نمونہ ترجمہ ہے۔ اصل ساخت جوں کی توں رہتی ہے۔\n";
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 async function loadAppData() {
@@ -1601,6 +2072,7 @@ async function boot() {
   wireLoginActions();
   wireUploadPanel();
   wireAdminPanel();
+  wireTranslatePanel();
 
   // Hash routing lives across every signed in view; only #admin (and only for
   // admins) reaches the admin view.
@@ -1622,6 +2094,12 @@ async function boot() {
     if (location.search.includes("preview-fixtures=admin")) {
       renderUsers(FIXTURE_USERS);
       showAdmin();
+    } else if (location.search.includes("preview-fixtures=translate")) {
+      populateLanguages();
+      updateTranslatePrice();
+      renderTranslations(FIXTURE_TRANSLATIONS);
+      populateBookChoices();
+      showTranslate();
     } else {
       showApp();
       renderBulkFixture();

@@ -1,8 +1,10 @@
-import type { Env } from "./types";
+import type { Env, QueueMsg } from "./types";
 import { captureHold, releaseHold, refundSurcharge } from "./ledger";
 import { failJob, transition, type Job } from "./jobs";
 import { r2DirectEnabled, presignGet } from "./presign";
 import { enrichConfig } from "./enrich";
+import { translateConfig, translateKey } from "./translate";
+import { failTranslation, getTranslation, transitionTranslation, type Translation } from "./translations";
 
 // The container call is injected so tests need no container or Mistral: the
 // queue handler passes the real container fetch, tests pass a stub returning
@@ -206,17 +208,131 @@ function realProcess(env: Env): ProcessFn {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Translation finalize: same shape as finalizeJob. The container call is
+// injected so tests need no container or provider key.
+// ---------------------------------------------------------------------------
+export type TranslateInput =
+  | { kind: "text"; text: string }
+  | { kind: "doc"; docJson: unknown };
+
+export type TranslateFn = (
+  input: TranslateInput,
+  t: Translation,
+  model: string
+) => Promise<{ word_count: number; markdown: string; doc_json?: unknown }>;
+
+// Finalize one translation: read its stored source from R2, run the (injected)
+// container translate, store the outputs, capture the hold, mark it ready.
+// Idempotent: anything not in 'processing' is skipped; any failure releases
+// the hold so the reader is never charged for a translation they did not get.
+export async function finalizeTranslation(
+  env: Env,
+  translationId: string,
+  translateFn: TranslateFn
+): Promise<"ready" | "failed" | "skipped"> {
+  const t = await getTranslation(env.DB, translationId);
+  if (!t || t.status !== "processing") return "skipped";
+
+  const src = t.r2SourceKey ? await env.STORE.get(t.r2SourceKey) : null;
+  if (!src) {
+    await failTranslation(
+      env.DB, t.id, "processing",
+      "something went wrong while translating, your credits were not charged",
+      "source gone from R2"
+    );
+    if (t.holdId != null) await releaseHold(env.DB, t.holdId);
+    return "failed";
+  }
+
+  try {
+    const cfg = await translateConfig(env);
+    if (!cfg.available) throw new Error("translate add-on unconfigured at finalize");
+    const input: TranslateInput =
+      t.kind === "text"
+        ? { kind: "text", text: await src.text() }
+        : { kind: "doc", docJson: JSON.parse(await src.text()) };
+    const out = await translateFn(input, t, cfg.model);
+    if (typeof out.markdown !== "string" || !out.markdown.trim()) {
+      throw new Error("engine returned no translation");
+    }
+
+    const mdKey = `translations/${t.id}/normalized.md`;
+    await env.STORE.put(mdKey, out.markdown, {
+      httpMetadata: { contentType: "text/markdown" },
+    });
+    let docKey: string | null = null;
+    if (t.kind === "book" && out.doc_json !== undefined) {
+      docKey = `translations/${t.id}/normalized.json`;
+      await env.STORE.put(docKey, JSON.stringify(out.doc_json), {
+        httpMetadata: { contentType: "application/json" },
+      });
+    }
+
+    const updated = await env.DB
+      .prepare(
+        `UPDATE translations SET r2_md_key = ?1, r2_doc_key = ?2,
+           finished_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ?3 AND status = 'processing'`
+      )
+      .bind(mdKey, docKey, t.id)
+      .run();
+    if (updated.meta.changes !== 1) return "skipped";
+
+    if (t.holdId != null) await captureHold(env.DB, t.holdId);
+    await transitionTranslation(env.DB, t.id, "processing", "ready");
+    return "ready";
+  } catch (err) {
+    await failTranslation(
+      env.DB, t.id, "processing",
+      "something went wrong while translating, your credits were not charged",
+      String(err)
+    );
+    if (t.holdId != null) await releaseHold(env.DB, t.holdId);
+    return "failed";
+  }
+}
+
+// The real container translate: the model id comes from config per run (like
+// enrich) and the provider key travels in a header, never stored container-side.
+function realTranslate(env: Env): TranslateFn {
+  return async (input, t, model) => {
+    const engine = env.OCR_ENGINE.getByName("engine");
+    const body =
+      input.kind === "text"
+        ? { kind: "text", text: input.text, target_language: t.targetLanguage, model }
+        : { kind: "doc", doc_json: input.docJson, target_language: t.targetLanguage, model };
+    const res = await engine.fetch(
+      new Request("http://engine/translate", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-translate-key": translateKey(env)!,
+        },
+        body: JSON.stringify(body),
+      })
+    );
+    if (!res.ok) throw new Error(`engine /translate ${res.status}`);
+    return (await res.json()) as Awaited<ReturnType<TranslateFn>>;
+  };
+}
+
 export async function handleQueue(
-  batch: MessageBatch<{ jobId: string }>,
+  batch: MessageBatch<QueueMsg>,
   env: Env
 ): Promise<void> {
   const process = realProcess(env);
   for (const msg of batch.messages) {
-    // finalizeJob owns the clean fail path (failJob + releaseHold). A "failed"
-    // or "skipped" result is fully handled, so ack it and do NOT throw: throwing
-    // would trigger an infra retry we do not want after a clean outcome. Only
-    // unexpected infra errors (e.g. R2/D1 unreachable) bubble up to retry.
-    await finalizeJob(env, msg.body.jobId, process);
+    // finalizeJob/finalizeTranslation own the clean fail path (fail + release
+    // hold). A "failed" or "skipped" result is fully handled, so ack it and do
+    // NOT throw: throwing would trigger an infra retry we do not want after a
+    // clean outcome. Only unexpected infra errors (e.g. R2/D1 unreachable)
+    // bubble up to retry.
+    if (msg.body.translationId) {
+      await finalizeTranslation(env, msg.body.translationId, realTranslate(env));
+    } else if (msg.body.jobId) {
+      await finalizeJob(env, msg.body.jobId, process);
+    }
     msg.ack();
   }
 }
