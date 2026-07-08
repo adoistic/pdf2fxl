@@ -1,8 +1,11 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { AppUser, Env } from "../types";
 import { allocate, getBalanceMcr, MCR_PER_CREDIT } from "../ledger";
 
-export const admin = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
+type AdminCtx = { Bindings: Env; Variables: { user: AppUser } };
+
+export const admin = new Hono<AdminCtx>();
 
 admin.post("/credits", async (c) => {
   const body = await c.req
@@ -37,9 +40,16 @@ admin.post("/credits", async (c) => {
   return c.json({ email, balanceMcr, balance: balanceMcr / MCR_PER_CREDIT });
 });
 
-// Flip the hidden translation option for one reader. Upserts by email like
-// /credits, so the option can be granted before the person ever signs in.
-admin.post("/users/translate", async (c) => {
+// Flip a hidden per-user option for one reader. Upserts by email like
+// /credits, so an option can be granted before the person ever signs in.
+// The column is whitelisted here, never caller input.
+const USER_FLAGS: Record<string, { column: string; field: string }> = {
+  translate: { column: "translate_enabled", field: "translateEnabled" },
+  branding: { column: "branding_enabled", field: "brandingEnabled" },
+};
+
+async function flipUserFlag(c: Context<AdminCtx>, flag: string) {
+  const spec = USER_FLAGS[flag];
   const body = await c.req
     .json<{ email?: unknown; enabled?: unknown }>()
     .catch(() => null);
@@ -53,15 +63,18 @@ admin.post("/users/translate", async (c) => {
   )
     .bind(email)
     .first<{ id: number }>();
-  await c.env.DB.prepare("UPDATE users SET translate_enabled = ?1 WHERE id = ?2")
+  await c.env.DB.prepare(`UPDATE users SET ${spec.column} = ?1 WHERE id = ?2`)
     .bind(enabled ? 1 : 0, userRow!.id)
     .run();
-  return c.json({ email, translateEnabled: enabled });
-});
+  return c.json({ email, [spec.field]: enabled });
+}
+
+admin.post("/users/translate", (c) => flipUserFlag(c, "translate"));
+admin.post("/users/branding", (c) => flipUserFlag(c, "branding"));
 
 admin.get("/users", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.is_admin, u.translate_enabled,
+    `SELECT u.id, u.email, u.name, u.is_admin, u.translate_enabled, u.branding_enabled,
             COALESCE(SUM(l.amount_mcr), 0) AS balance_mcr
      FROM users u
      LEFT JOIN credit_ledger l ON l.user_id = u.id
@@ -69,7 +82,7 @@ admin.get("/users", async (c) => {
      ORDER BY u.id DESC`
   ).all<{
     id: number; email: string; name: string | null; is_admin: number;
-    translate_enabled: number; balance_mcr: number;
+    translate_enabled: number; branding_enabled: number; balance_mcr: number;
   }>();
   return c.json({
     users: results.map((r) => ({
@@ -78,6 +91,7 @@ admin.get("/users", async (c) => {
       name: r.name,
       isAdmin: r.is_admin === 1,
       translateEnabled: r.translate_enabled === 1,
+      brandingEnabled: r.branding_enabled === 1,
       balance: r.balance_mcr / MCR_PER_CREDIT,
     })),
   });

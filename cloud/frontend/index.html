@@ -98,6 +98,7 @@
       <span class="app__spacer"></span>
       <nav class="app__account" aria-label="Account">
         <a id="translate-link" class="app__admin" href="#translate" hidden>Translate</a>
+        <a id="settings-link" class="app__admin" href="#settings" hidden>Settings</a>
         <a id="admin-link" class="app__admin" href="#admin" hidden>Admin</a>
         <span id="balance-chip" class="balance" hidden>
           <span class="balance__dot" aria-hidden="true"></span>
@@ -320,6 +321,98 @@
         </div>
       </aside>
     </div>
+  </section>
+
+  <section id="settings-view" class="app settings" hidden>
+    <header class="app__bar">
+      <img class="app__logo" src="/thothica-logo.png" alt="Thothica">
+      <span class="app__admin-tag">Settings</span>
+      <span class="app__spacer"></span>
+      <nav class="app__account" aria-label="Account">
+        <a id="settings-back-link" class="app__admin" href="#">Back to editions</a>
+        <span id="settings-email" class="app__email"></span>
+      </nav>
+      <button id="settings-sign-out-button" class="btn btn--ghost" type="button">Sign out</button>
+    </header>
+
+    <main class="app__main">
+      <div class="app__grid">
+
+        <section class="panel panel--settings reveal d1" aria-labelledby="settings-heading">
+          <h2 id="settings-heading" class="panel__title">Make it yours</h2>
+          <p class="panel__sub">Your own logo, colors and type, across the whole app, for your account.</p>
+
+          <div class="upload__field">
+            <span class="field-label">Logo</span>
+            <div class="logo-row">
+              <span id="brand-logo-preview" class="logo-row__preview">
+                <img id="brand-logo-img" src="/thothica-logo.png" alt="Current logo">
+              </span>
+              <div class="logo-row__actions">
+                <button id="brand-logo-choose" class="download-btn" type="button">Choose an image</button>
+                <button id="brand-logo-remove" class="download-btn" type="button" hidden>Remove</button>
+              </div>
+              <input id="brand-logo-input" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            </div>
+            <p class="field-hint">PNG, JPEG or WebP, under 1 MB. It replaces the mark in the top bar.</p>
+          </div>
+
+          <div class="color-grid">
+            <div class="upload__field">
+              <label class="field-label" for="brand-color">App color</label>
+              <div class="color-row">
+                <input id="brand-color" class="color-swatch" type="color" value="#624120">
+                <span id="brand-color-value" class="color-row__value">#624120</span>
+              </div>
+            </div>
+            <div class="upload__field">
+              <label class="field-label" for="accent-color">Accent</label>
+              <div class="color-row">
+                <input id="accent-color" class="color-swatch" type="color" value="#B8956A">
+                <span id="accent-color-value" class="color-row__value">#B8956A</span>
+              </div>
+            </div>
+            <div class="upload__field">
+              <label class="field-label" for="background-color">Background</label>
+              <div class="color-row">
+                <input id="background-color" class="color-swatch" type="color" value="#FCFCFA">
+                <span id="background-color-value" class="color-row__value">#FCFCFA</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="upload__field">
+            <label class="field-label" for="brand-font">Font</label>
+            <select id="brand-font" class="field field--select"></select>
+          </div>
+
+          <div class="upload__actions">
+            <button id="brand-save" class="btn btn--primary" type="button">Save my look</button>
+          </div>
+          <div class="settings__resetrow">
+            <button id="brand-reset" class="bulk-gate__cancel" type="button">Back to the standard look</button>
+          </div>
+
+          <p id="brand-status" class="upload-status" role="status" hidden></p>
+        </section>
+
+        <section class="panel reveal d2" aria-labelledby="preview-heading">
+          <h2 id="preview-heading" class="panel__title">How it reads</h2>
+          <p class="panel__sub">Changes show across the app as you adjust them. Save keeps them; leaving without saving puts things back.</p>
+
+          <div class="brandsample">
+            <h3 class="brandsample__title">A chapter, in your colors</h3>
+            <p class="brandsample__body">Body text sits on your background, headings carry your type, and the buttons take your app color.</p>
+            <div class="brandsample__row">
+              <span class="btn btn--primary brandsample__btn">A primary button</span>
+              <span class="status status--ready"><span class="status__dot"></span>Ready</span>
+              <span class="balance"><span class="balance__dot" aria-hidden="true"></span>42.7 credits</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
   </section>
 
   <section id="admin-view" class="app admin" hidden>

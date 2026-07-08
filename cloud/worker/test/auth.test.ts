@@ -66,8 +66,9 @@ describe("auth", () => {
       isAdmin: false,
       balance: 0,
       balanceMcr: 0,
-      // hidden add-on: null unless the admin flips the user's flag
+      // hidden add-ons: null unless the admin flips the user's flags
       translate: null,
+      branding: null,
     });
   });
 

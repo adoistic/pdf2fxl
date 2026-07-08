@@ -5,10 +5,12 @@ import { getBalanceMcr, MCR_PER_CREDIT } from "./ledger";
 import { admin } from "./routes/admin";
 import { jobs } from "./routes/jobs";
 import { translate } from "./routes/translate";
+import { branding } from "./routes/branding";
 import { handleQueue } from "./finalize";
 import { r2DirectEnabled } from "./presign";
 import { enrichConfig } from "./enrich";
 import { translateConfig } from "./translate";
+import { getBranding } from "./branding";
 
 const app = new Hono<{ Bindings: Env; Variables: { user: AppUser } }>();
 
@@ -37,14 +39,15 @@ app.use("/api/me", authRequired);
 app.get("/api/me", async (c) => {
   const user = c.get("user");
   const balanceMcr = await getBalanceMcr(c.env.DB, user.id);
-  // The translation add-on is invisible unless the admin flipped this user's
-  // flag AND the add-on is configured; only then does /api/me carry its terms.
+  // Hidden add-ons are invisible unless the admin flipped this user's flags;
+  // only then does /api/me carry their payloads (terms / current branding).
   let translate = null;
-  const flag = await c.env.DB
-    .prepare("SELECT translate_enabled FROM users WHERE id = ?1")
+  let brandingPayload = null;
+  const flags = await c.env.DB
+    .prepare("SELECT translate_enabled, branding_enabled FROM users WHERE id = ?1")
     .bind(user.id)
-    .first<{ translate_enabled: number }>();
-  if (flag?.translate_enabled === 1) {
+    .first<{ translate_enabled: number; branding_enabled: number }>();
+  if (flags?.translate_enabled === 1) {
     const cfg = await translateConfig(c.env);
     if (cfg.available) {
       translate = {
@@ -54,6 +57,9 @@ app.get("/api/me", async (c) => {
       };
     }
   }
+  if (flags?.branding_enabled === 1) {
+    brandingPayload = await getBranding(c.env.DB, user.id);
+  }
   return c.json({
     email: user.email,
     name: user.name,
@@ -61,6 +67,7 @@ app.get("/api/me", async (c) => {
     balanceMcr,
     balance: balanceMcr / MCR_PER_CREDIT,
     translate,
+    branding: brandingPayload,
   });
 });
 
@@ -71,6 +78,10 @@ app.route("/api/jobs", jobs);
 app.use("/api/translate", authRequired);
 app.use("/api/translate/*", authRequired);
 app.route("/api/translate", translate);
+
+app.use("/api/branding", authRequired);
+app.use("/api/branding/*", authRequired);
+app.route("/api/branding", branding);
 
 app.use("/api/admin/*", authRequired, adminRequired);
 app.route("/api/admin", admin);

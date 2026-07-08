@@ -86,6 +86,26 @@ const translationDownloads = document.getElementById("translation-downloads");
 const translationTextBody = document.getElementById("translation-text-body");
 const translationClose = document.getElementById("translation-close");
 
+const settingsView = document.getElementById("settings-view");
+const settingsLink = document.getElementById("settings-link");
+const settingsBackLink = document.getElementById("settings-back-link");
+const settingsEmail = document.getElementById("settings-email");
+const settingsSignOutButton = document.getElementById("settings-sign-out-button");
+const brandLogoImg = document.getElementById("brand-logo-img");
+const brandLogoChoose = document.getElementById("brand-logo-choose");
+const brandLogoRemove = document.getElementById("brand-logo-remove");
+const brandLogoInput = document.getElementById("brand-logo-input");
+const brandColorInput = document.getElementById("brand-color");
+const accentColorInput = document.getElementById("accent-color");
+const backgroundColorInput = document.getElementById("background-color");
+const brandColorValue = document.getElementById("brand-color-value");
+const accentColorValue = document.getElementById("accent-color-value");
+const backgroundColorValue = document.getElementById("background-color-value");
+const brandFontSelect = document.getElementById("brand-font");
+const brandSave = document.getElementById("brand-save");
+const brandReset = document.getElementById("brand-reset");
+const brandStatus = document.getElementById("brand-status");
+
 const adminView = document.getElementById("admin-view");
 const adminEmail = document.getElementById("admin-email");
 const adminBackLink = document.getElementById("admin-back-link");
@@ -150,8 +170,11 @@ const FIXTURE_ME = {
   name: "Preview Reader",
   isAdmin: true,
   balance: 42.7,
-  // Present so the hidden Translate view can be screenshotted via fixtures.
+  // Present so the hidden Translate and Settings views can be screenshotted
+  // via fixtures.
   translate: { maxWords: 2000, blockWords: 350, blockCredits: 500 },
+  branding: { brandColor: null, accentColor: null, backgroundColor: null,
+              font: null, hasLogo: false, logoType: null },
 };
 
 const FIXTURE_JOBS = [
@@ -178,9 +201,9 @@ const FIXTURE_JOBS_WAITING = [
 ];
 
 const FIXTURE_USERS = [
-  { id: 7, email: "adnan@thothica.com", name: "Adnan", isAdmin: true, balance: 1280.0 },
-  { id: 6, email: "reader@example.com", name: "Preview Reader", isAdmin: false, balance: 42.7 },
-  { id: 5, email: "amina.karim@example.com", name: "Amina Karim", isAdmin: false, balance: 318.5 },
+  { id: 7, email: "adnan@thothica.com", name: "Adnan", isAdmin: true, balance: 1280.0, translateEnabled: true, brandingEnabled: true },
+  { id: 6, email: "reader@example.com", name: "Preview Reader", isAdmin: false, balance: 42.7, translateEnabled: true },
+  { id: 5, email: "amina.karim@example.com", name: "Amina Karim", isAdmin: false, balance: 318.5, brandingEnabled: true },
   { id: 4, email: "j.okafor@example.com", name: null, isAdmin: false, balance: 0.0 },
   { id: 3, email: "editorial@heritagepress.example", name: "Heritage Press", isAdmin: false, balance: -6.3 },
   { id: 2, email: "student.aziz@example.edu", name: "Aziz R.", isAdmin: false, balance: 4.2 },
@@ -207,34 +230,40 @@ const FIXTURE_LEDGER = [
 let sessionReady = false;
 let sessionIsAdmin = false;
 
-function showLogin() {
-  loginView.hidden = false;
+function hideAllViews() {
+  loginView.hidden = true;
   appView.hidden = true;
   adminView.hidden = true;
   translateView.hidden = true;
+  settingsView.hidden = true;
+}
+
+function showLogin() {
+  hideAllViews();
+  loginView.hidden = false;
   stopPolling();
   stopTranslatePolling();
 }
 
 function showApp() {
-  loginView.hidden = true;
-  adminView.hidden = true;
-  translateView.hidden = true;
+  hideAllViews();
   appView.hidden = false;
 }
 
 function showAdmin() {
-  loginView.hidden = true;
-  appView.hidden = true;
-  translateView.hidden = true;
+  hideAllViews();
   adminView.hidden = false;
 }
 
 function showTranslate() {
-  loginView.hidden = true;
-  appView.hidden = true;
-  adminView.hidden = true;
+  hideAllViews();
   translateView.hidden = false;
+}
+
+function showSettings() {
+  hideAllViews();
+  settingsView.hidden = false;
+  fillSettingsForm();
 }
 
 // Routes the current hash to a view. Only #admin (admins) and #translate
@@ -252,7 +281,11 @@ function routeHash() {
     loadTranslateData();
     return;
   }
-  if (location.hash === "#admin" || location.hash === "#translate") {
+  if (location.hash === "#settings" && sessionBranding) {
+    showSettings();
+    return;
+  }
+  if (["#admin", "#translate", "#settings"].includes(location.hash)) {
     history.replaceState(null, "", location.pathname + location.search);
   }
   showApp();
@@ -312,10 +345,12 @@ function renderMe(me) {
   sessionTranslate = me.translate || null;
   translateLink.hidden = !sessionTranslate;
   translateBalanceAmount.textContent = `${me.balance.toFixed(1)} credits`;
+  syncBranding(me.branding);
   if (me.email) {
     userEmail.textContent = me.email;
     adminEmail.textContent = me.email;
     translateEmail.textContent = me.email;
+    settingsEmail.textContent = me.email;
   }
 }
 
@@ -713,10 +748,18 @@ function renderUsers(users) {
   usersCount.textContent = users.length === 1 ? "1 reader" : `${users.length} readers`;
 
   for (const user of users) {
-    const row = el("button", "urow");
-    row.type = "button";
+    // A div, not a button: the row opens the statement, but it also carries
+    // its own small toggle buttons for the hidden per-user options.
+    const row = el("div", "urow");
     row.setAttribute("role", "row");
+    row.tabIndex = 0;
     row.addEventListener("click", () => openLedger(user));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openLedger(user);
+      }
+    });
 
     const who = el("div", "urow__who");
     const emailWrap = el("div", "urow__email");
@@ -725,6 +768,10 @@ function renderUsers(users) {
       emailWrap.appendChild(el("span", "urow__badge", "Admin"));
     }
     who.appendChild(emailWrap);
+    const flags = el("div", "urow__flags");
+    flags.appendChild(renderFlagToggle(user, "translate", "Translate", user.translateEnabled));
+    flags.appendChild(renderFlagToggle(user, "branding", "White label", user.brandingEnabled));
+    who.appendChild(flags);
     row.appendChild(who);
 
     const name = user.name
@@ -741,6 +788,38 @@ function renderUsers(users) {
 
     usersList.appendChild(row);
   }
+}
+
+// A small on/off pill for a hidden per-user option (translate / white label).
+// Clicking flips the flag on the server; the row click (statement) is not
+// triggered. Fixture mode flips locally so the states can be screenshotted.
+function renderFlagToggle(user, flag, label, on) {
+  const btn = el("button", `uflag${on ? " uflag--on" : ""}`, label);
+  btn.type = "button";
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.title = on
+    ? `${label} is on for this reader. Click to turn it off.`
+    : `${label} is off for this reader. Click to turn it on.`;
+  btn.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    if (previewFixtures) {
+      btn.classList.toggle("uflag--on");
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api(`/api/admin/users/${flag}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: user.email, enabled: !on }),
+      });
+      await refreshUsers();
+    } catch (err) {
+      console.error(`failed to flip ${flag}`, err);
+      btn.disabled = false;
+    }
+  });
+  return btn;
 }
 
 async function refreshUsers() {
@@ -1575,6 +1654,346 @@ function wireUploadPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// White-label branding. Hidden unless /api/me carries a branding object (the
+// backend enables it per reader). The Settings view lets the reader restyle
+// the app for their own account: logo, app color, accent, background, font.
+// Everything maps onto the CSS variables the stylesheet is already built on.
+// ---------------------------------------------------------------------------
+const BRAND_DEFAULTS = {
+  brandColor: "#624120",
+  accentColor: "#B8956A",
+  backgroundColor: "#FCFCFA",
+};
+
+// Curated font pairs. Keys must match the server's whitelist; each maps to a
+// serif (headings) + sans (interface) family and the webfont stylesheet that
+// carries them. "thothica" is the standard look (fonts already loaded).
+const FONT_PAIRS = {
+  "thothica": { label: "Cormorant Garamond with Teachers (standard)", serif: null, sans: null, href: null },
+  "playfair-inter": {
+    label: "Playfair Display with Inter",
+    serif: "'Playfair Display',Georgia,serif", sans: "'Inter','Trebuchet MS',sans-serif",
+    href: "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;600;700&display=swap",
+  },
+  "lora-source": {
+    label: "Lora with Source Sans",
+    serif: "'Lora',Georgia,serif", sans: "'Source Sans 3','Trebuchet MS',sans-serif",
+    href: "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Source+Sans+3:wght@400;600;700&display=swap",
+  },
+  "merriweather-inter": {
+    label: "Merriweather with Inter",
+    serif: "'Merriweather',Georgia,serif", sans: "'Inter','Trebuchet MS',sans-serif",
+    href: "https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;600;700&display=swap",
+  },
+  "poppins": {
+    label: "Poppins throughout",
+    serif: "'Poppins','Trebuchet MS',sans-serif", sans: "'Poppins','Trebuchet MS',sans-serif",
+    href: "https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,500&display=swap",
+  },
+  "plex": {
+    label: "IBM Plex Serif with IBM Plex Sans",
+    serif: "'IBM Plex Serif',Georgia,serif", sans: "'IBM Plex Sans','Trebuchet MS',sans-serif",
+    href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Sans:wght@400;600;700&display=swap",
+  },
+  "noto": {
+    label: "Noto Serif with Noto Sans",
+    serif: "'Noto Serif',Georgia,serif", sans: "'Noto Sans','Trebuchet MS',sans-serif",
+    href: "https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,500;0,600;1,500&family=Noto+Sans:wght@400;600;700&display=swap",
+  },
+};
+
+let sessionBranding = null;      // the saved branding from /api/me, or null
+let appliedBrandingJson = null;  // what applyBranding last painted (dedupe)
+let brandLogoBlobUrl = null;     // object url of the fetched custom logo
+
+// Mix a #rrggbb color toward black (pct < 0) or white (pct > 0).
+function shadeHex(hex, pct) {
+  const n = parseInt(hex.slice(1), 16);
+  const t = pct < 0 ? 0 : 255;
+  const p = Math.abs(pct) / 100;
+  const ch = (v) => Math.round(v + (t - v) * p);
+  const r = ch((n >> 16) & 255), g = ch((n >> 8) & 255), b = ch(n & 255);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+function setBrandFonts(fontKey) {
+  const pair = FONT_PAIRS[fontKey] || FONT_PAIRS.thothica;
+  const root = document.documentElement.style;
+  let link = document.getElementById("brand-fonts");
+  if (pair.href) {
+    if (!link) {
+      link = document.createElement("link");
+      link.id = "brand-fonts";
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    if (link.href !== pair.href) link.href = pair.href;
+    root.setProperty("--serif", pair.serif);
+    root.setProperty("--sans", pair.sans);
+  } else {
+    if (link) link.remove();
+    root.removeProperty("--serif");
+    root.removeProperty("--sans");
+  }
+}
+
+function setBrandLogo(url) {
+  for (const img of document.querySelectorAll(".app__logo, #brand-logo-img")) {
+    img.src = url || "/thothica-logo.png";
+  }
+}
+
+// Fetch the reader's uploaded logo (the <img> cannot carry the bearer token).
+async function loadBrandLogo() {
+  try {
+    const token = await getToken();
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch("/api/branding/logo", { headers });
+    if (!res.ok) return;
+    if (brandLogoBlobUrl) URL.revokeObjectURL(brandLogoBlobUrl);
+    brandLogoBlobUrl = URL.createObjectURL(await res.blob());
+    setBrandLogo(brandLogoBlobUrl);
+  } catch (err) {
+    console.error("logo load failed", err);
+  }
+}
+
+// Paint a branding object onto the app: CSS variables, fonts, logo. Passing
+// null (or empty fields) restores the standard look for those pieces.
+function applyBranding(b, { skipLogo = false } = {}) {
+  const root = document.documentElement.style;
+  const brand = b && b.brandColor;
+  const accent = b && b.accentColor;
+  const bg = b && b.backgroundColor;
+
+  if (brand) {
+    root.setProperty("--brown", brand);
+    root.setProperty("--brown2", shadeHex(brand, -10));
+    root.setProperty("--deep", shadeHex(brand, -28));
+  } else {
+    for (const v of ["--brown", "--brown2", "--deep"]) root.removeProperty(v);
+  }
+  if (accent) {
+    root.setProperty("--gold", accent);
+    root.setProperty("--sand", shadeHex(accent, 45));
+  } else {
+    for (const v of ["--gold", "--sand"]) root.removeProperty(v);
+  }
+  if (bg) {
+    root.setProperty("--page", bg);
+    root.setProperty("--cream", shadeHex(bg, -3));
+    root.setProperty("--tile", shadeHex(bg, -6));
+  } else {
+    for (const v of ["--page", "--cream", "--tile"]) root.removeProperty(v);
+  }
+  setBrandFonts(b && b.font);
+  if (!skipLogo) {
+    if (b && b.hasLogo) {
+      if (brandLogoBlobUrl) setBrandLogo(brandLogoBlobUrl);
+      else if (!previewFixtures) loadBrandLogo();
+    } else {
+      setBrandLogo(null);
+    }
+  }
+}
+
+// Called from renderMe on every refresh: repaint only when something changed.
+function syncBranding(b) {
+  sessionBranding = b || null;
+  settingsLink.hidden = !sessionBranding;
+  const json = JSON.stringify(sessionBranding);
+  if (json === appliedBrandingJson) return;
+  appliedBrandingJson = json;
+  applyBranding(sessionBranding);
+  if (!settingsView.hidden) fillSettingsForm();
+}
+
+function populateFontChoices() {
+  if (brandFontSelect.options.length > 0) return;
+  for (const [key, pair] of Object.entries(FONT_PAIRS)) {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = pair.label;
+    brandFontSelect.appendChild(opt);
+  }
+}
+
+function fillSettingsForm() {
+  populateFontChoices();
+  const b = sessionBranding || {};
+  brandColorInput.value = b.brandColor || BRAND_DEFAULTS.brandColor;
+  accentColorInput.value = b.accentColor || BRAND_DEFAULTS.accentColor;
+  backgroundColorInput.value = b.backgroundColor || BRAND_DEFAULTS.backgroundColor;
+  brandColorValue.textContent = brandColorInput.value;
+  accentColorValue.textContent = accentColorInput.value;
+  backgroundColorValue.textContent = backgroundColorInput.value;
+  brandFontSelect.value = b.font || "thothica";
+  brandLogoRemove.hidden = !(b.hasLogo);
+}
+
+// The form's current state as a branding patch. A picker left on the standard
+// value is sent as null, so untouched fields stay "standard" not "custom".
+function settingsFormPatch() {
+  const norm = (v, def) => (v.toLowerCase() === def.toLowerCase() ? null : v);
+  return {
+    brandColor: norm(brandColorInput.value, BRAND_DEFAULTS.brandColor),
+    accentColor: norm(accentColorInput.value, BRAND_DEFAULTS.accentColor),
+    backgroundColor: norm(backgroundColorInput.value, BRAND_DEFAULTS.backgroundColor),
+    font: brandFontSelect.value === "thothica" ? null : brandFontSelect.value,
+  };
+}
+
+// Live preview while fiddling: paint the form state without saving. The saved
+// look comes back if they leave without saving (syncBranding repaints).
+function previewSettingsForm() {
+  const patch = settingsFormPatch();
+  brandColorValue.textContent = brandColorInput.value;
+  accentColorValue.textContent = accentColorInput.value;
+  backgroundColorValue.textContent = backgroundColorInput.value;
+  applyBranding(
+    { ...patch, hasLogo: !!(sessionBranding && sessionBranding.hasLogo) },
+    { skipLogo: true }
+  );
+}
+
+function showBrandStatus(message, kind) {
+  brandStatus.textContent = message;
+  brandStatus.classList.toggle("upload-status--error", kind === "error");
+  brandStatus.hidden = false;
+}
+
+async function saveBranding() {
+  brandStatus.hidden = true;
+  brandSave.disabled = true;
+  const restLabel = brandSave.textContent;
+  brandSave.textContent = "Saving...";
+  try {
+    const saved = await api("/api/branding", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(settingsFormPatch()),
+    });
+    sessionBranding = saved;
+    appliedBrandingJson = JSON.stringify(saved);
+    applyBranding(saved);
+    fillSettingsForm();
+    showBrandStatus("Saved. This is how the app looks for you now.");
+  } catch (err) {
+    showBrandStatus(`${sentence(err.message)}.`, "error");
+  } finally {
+    brandSave.disabled = false;
+    brandSave.textContent = restLabel;
+  }
+}
+
+async function resetBrandingToStandard() {
+  brandStatus.hidden = true;
+  try {
+    const saved = await api("/api/branding", { method: "DELETE" });
+    sessionBranding = saved;
+    appliedBrandingJson = JSON.stringify(saved);
+    if (brandLogoBlobUrl) {
+      URL.revokeObjectURL(brandLogoBlobUrl);
+      brandLogoBlobUrl = null;
+    }
+    applyBranding(saved);
+    fillSettingsForm();
+    showBrandStatus("Back to the standard look.");
+  } catch (err) {
+    showBrandStatus(`${sentence(err.message)}.`, "error");
+  }
+}
+
+async function uploadBrandLogo(file) {
+  if (!file) return;
+  if (file.size > 1024 * 1024) {
+    showBrandStatus("That image is over 1 MB. Choose a smaller one.", "error");
+    return;
+  }
+  brandStatus.hidden = true;
+  try {
+    const token = await getToken();
+    const headers = new Headers({ "content-type": file.type });
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch("/api/branding/logo", { method: "POST", headers, body: file });
+    if (!res.ok) {
+      let message = `request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body && typeof body.error === "string") message = body.error;
+      } catch { /* not json */ }
+      throw new Error(message);
+    }
+    sessionBranding = await res.json();
+    appliedBrandingJson = JSON.stringify(sessionBranding);
+    if (brandLogoBlobUrl) URL.revokeObjectURL(brandLogoBlobUrl);
+    brandLogoBlobUrl = URL.createObjectURL(file);
+    setBrandLogo(brandLogoBlobUrl);
+    fillSettingsForm();
+    showBrandStatus("Logo saved. It now carries your mark.");
+  } catch (err) {
+    showBrandStatus(`${sentence(err.message)}.`, "error");
+  }
+}
+
+async function removeBrandLogo() {
+  brandStatus.hidden = true;
+  try {
+    sessionBranding = await api("/api/branding/logo", { method: "DELETE" });
+    appliedBrandingJson = JSON.stringify(sessionBranding);
+    if (brandLogoBlobUrl) {
+      URL.revokeObjectURL(brandLogoBlobUrl);
+      brandLogoBlobUrl = null;
+    }
+    setBrandLogo(null);
+    fillSettingsForm();
+    showBrandStatus("Logo removed.");
+  } catch (err) {
+    showBrandStatus(`${sentence(err.message)}.`, "error");
+  }
+}
+
+function wireSettingsPanel() {
+  for (const input of [brandColorInput, accentColorInput, backgroundColorInput]) {
+    input.addEventListener("input", previewSettingsForm);
+  }
+  brandFontSelect.addEventListener("change", previewSettingsForm);
+  brandSave.addEventListener("click", () => {
+    saveBranding().catch((err) => console.error("save branding failed", err));
+  });
+  brandReset.addEventListener("click", () => {
+    if (previewFixtures) return;
+    resetBrandingToStandard().catch((err) => console.error("reset branding failed", err));
+  });
+  brandLogoChoose.addEventListener("click", () => brandLogoInput.click());
+  brandLogoInput.addEventListener("change", () => {
+    const file = brandLogoInput.files && brandLogoInput.files[0];
+    brandLogoInput.value = "";
+    if (previewFixtures) return;
+    uploadBrandLogo(file).catch((err) => console.error("logo upload failed", err));
+  });
+  brandLogoRemove.addEventListener("click", () => {
+    if (previewFixtures) return;
+    removeBrandLogo().catch((err) => console.error("logo remove failed", err));
+  });
+  settingsBackLink.addEventListener("click", (event) => {
+    event.preventDefault();
+    history.replaceState(null, "", location.pathname + location.search);
+    // leaving without saving: put the saved look back
+    applyBranding(sessionBranding);
+    showApp();
+  });
+  settingsSignOutButton.addEventListener("click", async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.error("sign out failed", err);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Translate view. Hidden unless /api/me carries the translate terms (the
 // backend enables it per reader). Paste text or pick a ready edition, choose
 // a language, see the live price, and read the result in a drawer.
@@ -2073,6 +2492,7 @@ async function boot() {
   wireUploadPanel();
   wireAdminPanel();
   wireTranslatePanel();
+  wireSettingsPanel();
 
   // Hash routing lives across every signed in view; only #admin (and only for
   // admins) reaches the admin view.
@@ -2100,6 +2520,8 @@ async function boot() {
       renderTranslations(FIXTURE_TRANSLATIONS);
       populateBookChoices();
       showTranslate();
+    } else if (location.search.includes("preview-fixtures=settings")) {
+      showSettings();
     } else {
       showApp();
       renderBulkFixture();
