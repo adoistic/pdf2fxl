@@ -359,27 +359,34 @@
 
           <div class="color-grid">
             <div class="upload__field">
-              <label class="field-label" for="brand-color">App color</label>
+              <label class="field-label" for="brand-color-hex">App color</label>
               <div class="color-row">
-                <input id="brand-color" class="color-swatch" type="color" value="#624120">
-                <span id="brand-color-value" class="color-row__value">#624120</span>
+                <input id="brand-color" class="color-swatch" type="color" value="#624120"
+                       aria-label="Pick the app color">
+                <input id="brand-color-hex" class="field color-hex" type="text" value="#624120"
+                       inputmode="text" autocomplete="off" spellcheck="false" maxlength="7">
               </div>
             </div>
             <div class="upload__field">
-              <label class="field-label" for="accent-color">Accent</label>
+              <label class="field-label" for="accent-color-hex">Accent</label>
               <div class="color-row">
-                <input id="accent-color" class="color-swatch" type="color" value="#B8956A">
-                <span id="accent-color-value" class="color-row__value">#B8956A</span>
+                <input id="accent-color" class="color-swatch" type="color" value="#B8956A"
+                       aria-label="Pick the accent color">
+                <input id="accent-color-hex" class="field color-hex" type="text" value="#B8956A"
+                       inputmode="text" autocomplete="off" spellcheck="false" maxlength="7">
               </div>
             </div>
             <div class="upload__field">
-              <label class="field-label" for="background-color">Background</label>
+              <label class="field-label" for="background-color-hex">Background</label>
               <div class="color-row">
-                <input id="background-color" class="color-swatch" type="color" value="#FCFCFA">
-                <span id="background-color-value" class="color-row__value">#FCFCFA</span>
+                <input id="background-color" class="color-swatch" type="color" value="#FCFCFA"
+                       aria-label="Pick the background color">
+                <input id="background-color-hex" class="field color-hex" type="text" value="#FCFCFA"
+                       inputmode="text" autocomplete="off" spellcheck="false" maxlength="7">
               </div>
             </div>
           </div>
+          <p class="field-hint">Type or paste a hex code like #0f4c5c, or use the swatch to pick one.</p>
 
           <div class="upload__field">
             <label class="field-label" for="brand-font">Font</label>

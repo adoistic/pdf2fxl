@@ -98,9 +98,9 @@ const brandLogoInput = document.getElementById("brand-logo-input");
 const brandColorInput = document.getElementById("brand-color");
 const accentColorInput = document.getElementById("accent-color");
 const backgroundColorInput = document.getElementById("background-color");
-const brandColorValue = document.getElementById("brand-color-value");
-const accentColorValue = document.getElementById("accent-color-value");
-const backgroundColorValue = document.getElementById("background-color-value");
+const brandColorHex = document.getElementById("brand-color-hex");
+const accentColorHex = document.getElementById("accent-color-hex");
+const backgroundColorHex = document.getElementById("background-color-hex");
 const brandFontSelect = document.getElementById("brand-font");
 const brandSave = document.getElementById("brand-save");
 const brandReset = document.getElementById("brand-reset");
@@ -1706,6 +1706,15 @@ let sessionBranding = null;      // the saved branding from /api/me, or null
 let appliedBrandingJson = null;  // what applyBranding last painted (dedupe)
 let brandLogoBlobUrl = null;     // object url of the fetched custom logo
 
+// A typed or pasted hex color, normalized to #rrggbb. Accepts "#1a2b3c",
+// "1a2b3c", and the short "#abc" form (expanded). Anything else is null.
+function parseHexColor(raw) {
+  let v = String(raw || "").trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3}$/.test(v)) v = v.split("").map((c) => c + c).join("");
+  if (!/^[0-9a-fA-F]{6}$/.test(v)) return null;
+  return `#${v.toLowerCase()}`;
+}
+
 // Mix a #rrggbb color toward black (pct < 0) or white (pct > 0).
 function shadeHex(hex, pct) {
   const n = parseInt(hex.slice(1), 16);
@@ -1825,9 +1834,9 @@ function fillSettingsForm() {
   brandColorInput.value = b.brandColor || BRAND_DEFAULTS.brandColor;
   accentColorInput.value = b.accentColor || BRAND_DEFAULTS.accentColor;
   backgroundColorInput.value = b.backgroundColor || BRAND_DEFAULTS.backgroundColor;
-  brandColorValue.textContent = brandColorInput.value;
-  accentColorValue.textContent = accentColorInput.value;
-  backgroundColorValue.textContent = backgroundColorInput.value;
+  brandColorHex.value = brandColorInput.value;
+  accentColorHex.value = accentColorInput.value;
+  backgroundColorHex.value = backgroundColorInput.value;
   brandFontSelect.value = b.font || "thothica";
   brandLogoRemove.hidden = !(b.hasLogo);
 }
@@ -1848,13 +1857,39 @@ function settingsFormPatch() {
 // look comes back if they leave without saving (syncBranding repaints).
 function previewSettingsForm() {
   const patch = settingsFormPatch();
-  brandColorValue.textContent = brandColorInput.value;
-  accentColorValue.textContent = accentColorInput.value;
-  backgroundColorValue.textContent = backgroundColorInput.value;
   applyBranding(
     { ...patch, hasLogo: !!(sessionBranding && sessionBranding.hasLogo) },
     { skipLogo: true }
   );
+}
+
+// Keep a swatch and its hex field in step, both ways. Typing or pasting a
+// valid hex code applies live; on blur the field normalizes (or snaps back to
+// the last good color if what was typed is not a color).
+function wireColorField(picker, hexField) {
+  picker.addEventListener("input", () => {
+    hexField.value = picker.value;
+    previewSettingsForm();
+  });
+  hexField.addEventListener("input", () => {
+    const parsed = parseHexColor(hexField.value);
+    if (parsed) {
+      picker.value = parsed;
+      previewSettingsForm();
+    }
+  });
+  hexField.addEventListener("blur", () => {
+    const parsed = parseHexColor(hexField.value);
+    hexField.value = parsed || picker.value;
+    if (parsed) picker.value = parsed;
+    previewSettingsForm();
+  });
+  hexField.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      hexField.blur();
+    }
+  });
 }
 
 function showBrandStatus(message, kind) {
@@ -1955,9 +1990,9 @@ async function removeBrandLogo() {
 }
 
 function wireSettingsPanel() {
-  for (const input of [brandColorInput, accentColorInput, backgroundColorInput]) {
-    input.addEventListener("input", previewSettingsForm);
-  }
+  wireColorField(brandColorInput, brandColorHex);
+  wireColorField(accentColorInput, accentColorHex);
+  wireColorField(backgroundColorInput, backgroundColorHex);
   brandFontSelect.addEventListener("change", previewSettingsForm);
   brandSave.addEventListener("click", () => {
     saveBranding().catch((err) => console.error("save branding failed", err));

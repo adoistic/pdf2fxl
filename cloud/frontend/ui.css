@@ -967,3 +967,10 @@ input{font:inherit}
   background:var(--brown); border-color:var(--brown); color:var(--cream);
 }
 .uflag:disabled{opacity:.6; cursor:default}
+
+/* hex entry beside each swatch: type or paste a #rrggbb code directly */
+.color-hex{
+  width:100%; max-width:110px; min-height:40px; padding:8px 10px;
+  font-family:var(--sans); font-size:13.5px; letter-spacing:.04em;
+  text-transform:lowercase;
+}
