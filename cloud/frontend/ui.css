@@ -974,3 +974,150 @@ input{font:inherit}
   font-family:var(--sans); font-size:13.5px; letter-spacing:.04em;
   text-transform:lowercase;
 }
+
+/* ---- laptop: the left panel stays with you while the list scrolls ---------*/
+/* The grid is two columns from 960px up; below that everything stacks and
+   sticking would be wrong. Offset clears the 68px sticky bar; if the panel
+   is taller than the window it scrolls inside itself on a thin rail. */
+@media (min-width:960px){
+  .app__grid > .panel--upload,
+  .app__grid > .panel--translate,
+  .app__grid > .panel--settings,
+  .admin__grid > .panel--allocate{
+    position:sticky; top:88px;
+    max-height:calc(100vh - 108px);
+    overflow-y:auto;
+    scrollbar-width:thin;
+    scrollbar-color:var(--line) transparent;
+  }
+  .app__grid > .panel::-webkit-scrollbar,
+  .admin__grid > .panel::-webkit-scrollbar{width:8px}
+  .app__grid > .panel::-webkit-scrollbar-thumb,
+  .admin__grid > .panel::-webkit-scrollbar-thumb{
+    background:var(--line2); border-radius:999px;
+  }
+  .app__grid > .panel::-webkit-scrollbar-thumb:hover,
+  .admin__grid > .panel::-webkit-scrollbar-thumb:hover{background:var(--line)}
+}
+
+/* A little more room on wide laptops; the reading column stays comfortable. */
+@media (min-width:1440px){
+  .app__main{max-width:1280px}
+}
+
+/* ---- skeletons: calm shimmer placeholders while a list loads --------------*/
+.skel-card{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:18px;
+  background:var(--card); border:1px solid var(--line2); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-sm);
+  padding:18px clamp(16px,2.4vw,24px);
+}
+.skel{
+  position:relative; overflow:hidden;
+  background:var(--tile); border-radius:7px;
+}
+.skel::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(100deg, transparent 20%, rgba(255,255,255,.75) 50%, transparent 80%);
+  transform:translateX(-100%);
+  animation:shimmer 1.6s var(--ease) infinite;
+}
+@keyframes shimmer{to{transform:translateX(100%)}}
+.skel--title{width:52%; height:18px}
+.skel--meta{width:34%; height:12px; margin-top:10px}
+.skel--chip{width:92px; height:28px; border-radius:999px; flex:0 0 auto}
+@media (prefers-reduced-motion:reduce){
+  .skel::after{animation:none}
+}
+
+/* ---- live status: the dot breathes while we work ---------------------------*/
+.status--active .status__dot{
+  animation:breathe 1.5s ease-in-out infinite;
+}
+@keyframes breathe{
+  0%,100%{opacity:.45; transform:scale(.85)}
+  50%{opacity:1; transform:scale(1.15)}
+}
+@media (prefers-reduced-motion:reduce){
+  .status--active .status__dot{animation:none}
+}
+
+/* ---- buttons: a small spinner joins the "Preparing..." label ---------------*/
+.download-btn.is-loading::before,
+.btn--primary.is-loading::before{
+  content:""; display:inline-block; width:12px; height:12px;
+  margin-right:8px; flex:0 0 auto;
+  border:2px solid currentColor; border-right-color:transparent;
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .download-btn.is-loading::before,
+  .btn--primary.is-loading::before{animation:none; border-right-color:currentColor}
+}
+
+/* ---- picking books for a ZIP -----------------------------------------------*/
+.pick{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:22px; height:22px; flex:0 0 auto;
+  border:1.5px solid var(--line); border-radius:7px;
+  background:var(--card); cursor:pointer; color:transparent;
+  transition:border-color .18s var(--ease), background .18s var(--ease),
+             color .18s var(--ease);
+  margin-top:2px;
+}
+.pick:hover{border-color:var(--gold)}
+.pick:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+.pick.is-picked{
+  background:var(--brown); border-color:var(--brown); color:var(--cream);
+}
+.pick svg{display:block}
+
+/* The floating tray that appears when books are picked. */
+.zipbar{
+  position:fixed; left:50%; bottom:22px; z-index:40;
+  transform:translateX(-50%);
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  max-width:min(92vw, 720px);
+  padding:12px 16px 12px 20px;
+  background:var(--deep); color:var(--cream);
+  border-radius:999px; box-shadow:var(--shadow-lg);
+  animation:tray-rise .35s var(--ease);
+}
+@keyframes tray-rise{
+  from{opacity:0; transform:translate(-50%, 14px)}
+  to{opacity:1; transform:translate(-50%, 0)}
+}
+.zipbar__count{
+  font-family:var(--sans); font-weight:600; font-size:14px; letter-spacing:.01em;
+  white-space:nowrap;
+}
+.zipbar__actions{display:flex; align-items:center; gap:8px}
+.zipbar .btn--primary{
+  min-height:38px; padding:8px 18px; font-size:13.5px;
+  background:var(--gold); border-color:var(--gold); color:var(--deep);
+}
+.zipbar .btn--primary:hover{filter:brightness(1.06)}
+.zipbar__clear{
+  background:transparent; border:0; color:var(--sand);
+  font-family:var(--sans); font-weight:600; font-size:13px; cursor:pointer;
+  padding:8px 10px; border-radius:999px;
+  transition:color .18s var(--ease);
+}
+.zipbar__clear:hover{color:var(--cream)}
+.zipbar__progress{
+  display:flex; flex-direction:column; gap:6px; min-width:min(60vw, 340px);
+}
+.zipbar__ptext{font-family:var(--sans); font-size:13px; color:var(--sand)}
+.zipbar__track{
+  height:5px; border-radius:999px; background:rgba(255,255,255,.18); overflow:hidden;
+}
+.zipbar__fill{
+  display:block; height:100%; width:0%;
+  background:var(--gold); border-radius:999px;
+  transition:width .3s var(--ease);
+}
+@media (max-width:639px){
+  .zipbar{border-radius:18px; width:92vw; justify-content:center}
+}

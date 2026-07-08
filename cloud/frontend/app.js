@@ -439,6 +439,8 @@ function renderEmptyState() {
 function renderJob(job) {
   const row = el("article", "job");
 
+  if (job.status === "ready") row.appendChild(renderPick(job));
+
   const main = el("div", "job__main");
   const titleRow = el("div", "job__titlerow");
   titleRow.appendChild(el("h3", "job__title", job.title || "Untitled scan"));
@@ -562,6 +564,284 @@ function downloadName(job, format) {
   return `${base}.${format}`;
 }
 
+// ---------------------------------------------------------------------------
+// ZIP downloads. Books are picked one by one (across groups and solo cards)
+// or a whole group at once; the ZIP carries every format of every picked
+// book, one folder per book. The archive is assembled right here in the
+// browser (store method, no recompression: EPUB and Word files are already
+// compressed), so the app never has to buffer a giant download server side.
+// ---------------------------------------------------------------------------
+const zipbar = document.getElementById("zipbar");
+const zipbarCount = document.getElementById("zipbar-count");
+const zipbarActions = document.getElementById("zipbar-actions");
+const zipbarDownload = document.getElementById("zipbar-download");
+const zipbarClear = document.getElementById("zipbar-clear");
+const zipbarProgress = document.getElementById("zipbar-progress");
+const zipbarPtext = document.getElementById("zipbar-ptext");
+const zipbarFill = document.getElementById("zipbar-fill");
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// Minimal ZIP writer, store method only. files: [{ name, data: Uint8Array }].
+// Exported so the archive format can be verified against a real unzip tool.
+export function buildZip(files) {
+  const encoder = new TextEncoder();
+  const d = new Date();
+  const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const dosDate = (((d.getFullYear() - 1980) & 0x7f) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = encoder.encode(f.name);
+    const crc = crc32(f.data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);       // version needed
+    local.setUint16(6, 0x0800, true);   // utf-8 filenames
+    local.setUint16(8, 0, true);        // store
+    local.setUint16(10, dosTime, true);
+    local.setUint16(12, dosDate, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, f.data.length, true);
+    local.setUint32(22, f.data.length, true);
+    local.setUint16(26, name.length, true);
+    local.setUint16(28, 0, true);
+    chunks.push(new Uint8Array(local.buffer), name, f.data);
+
+    const cen = new DataView(new ArrayBuffer(46));
+    cen.setUint32(0, 0x02014b50, true);
+    cen.setUint16(4, 20, true);
+    cen.setUint16(6, 20, true);
+    cen.setUint16(8, 0x0800, true);
+    cen.setUint16(10, 0, true);
+    cen.setUint16(12, dosTime, true);
+    cen.setUint16(14, dosDate, true);
+    cen.setUint32(16, crc, true);
+    cen.setUint32(20, f.data.length, true);
+    cen.setUint32(24, f.data.length, true);
+    cen.setUint16(28, name.length, true);
+    cen.setUint32(42, offset, true);
+    central.push(new Uint8Array(cen.buffer), name);
+    offset += 30 + name.length + f.data.length;
+  }
+  let cdSize = 0;
+  for (const c of central) cdSize += c.length;
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true);
+  eocd.setUint32(16, offset, true);
+  chunks.push(...central, new Uint8Array(eocd.buffer));
+  return new Blob(chunks, { type: "application/zip" });
+}
+
+async function fetchArtifactBytes(job, format) {
+  const token = await getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(
+    `/api/jobs/${job.id}/download?format=${format}`,
+    { headers, redirect: "follow" }
+  );
+  if (!response.ok) throw new Error(`request failed (${response.status})`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+// Books picked for a ZIP, by job id. Survives list re-renders; pruned when a
+// book leaves the ready state or the list.
+const pickedIds = new Set();
+let currentJobs = [];
+let zipRunning = false;
+let zipbarHideTimer = null;
+
+function zipBaseName(job, used) {
+  const base =
+    (job.title || "edition").toLowerCase().replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "").slice(0, 60) || "edition";
+  let name = base;
+  let n = 2;
+  while (used.has(name)) name = `${base}-${n++}`;
+  used.add(name);
+  return name;
+}
+
+function setZipProgress(done, total, label) {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  zipbarFill.style.width = `${pct}%`;
+  zipbarPtext.textContent = label
+    ? `${done} of ${total} files  ·  ${label}`
+    : `${done} of ${total} files`;
+}
+
+function showZipbarMessage(message) {
+  zipbarCount.textContent = message;
+  zipbarActions.hidden = true;
+  zipbarProgress.hidden = true;
+  zipbar.hidden = false;
+  if (zipbarHideTimer) clearTimeout(zipbarHideTimer);
+  zipbarHideTimer = setTimeout(() => {
+    zipbarHideTimer = null;
+    updateZipbar();
+  }, 3500);
+}
+
+function updateZipbar() {
+  if (zipRunning || zipbarHideTimer) return;
+  if (pickedIds.size === 0) {
+    zipbar.hidden = true;
+    return;
+  }
+  zipbar.hidden = false;
+  zipbarProgress.hidden = true;
+  zipbarActions.hidden = false;
+  zipbarCount.textContent =
+    pickedIds.size === 1 ? "1 book picked" : `${pickedIds.size} books picked`;
+}
+
+// Fetch every format of every book (a few at a time), fold them into one
+// archive, and hand it to the browser. Books that fail are left out and
+// counted, never blocking the rest.
+async function zipJobs(jobs, zipName) {
+  if (zipRunning || jobs.length === 0) return;
+  zipRunning = true;
+  zipbar.hidden = false;
+  zipbarActions.hidden = true;
+  zipbarProgress.hidden = false;
+  zipbarCount.textContent = "Preparing your ZIP";
+  const total = jobs.length * DOWNLOAD_FORMATS.length;
+  setZipProgress(0, total, "");
+
+  try {
+    if (previewFixtures) {
+      // Visual pass only: walk the bar without touching the network.
+      for (let i = 1; i <= total; i++) {
+        setZipProgress(i, total, jobs[Math.floor((i - 1) / DOWNLOAD_FORMATS.length)].title || "");
+        await new Promise((r) => setTimeout(r, 220));
+      }
+      return;
+    }
+    const used = new Set();
+    const tasks = [];
+    for (const job of jobs) {
+      const base = zipBaseName(job, used);
+      for (const { format } of DOWNLOAD_FORMATS) tasks.push({ job, format, base });
+    }
+    const files = [];
+    let done = 0;
+    let failed = 0;
+    await runPool(tasks, 3, async (t) => {
+      try {
+        const bytes = await fetchArtifactBytes(t.job, t.format);
+        files.push({ name: `${t.base}/${t.base}.${t.format}`, data: bytes });
+      } catch (err) {
+        failed += 1;
+        console.error(`zip: ${t.format} failed for ${t.job.id}`, err);
+      } finally {
+        done += 1;
+        setZipProgress(done, total, t.job.title || "");
+      }
+    });
+    if (files.length === 0) throw new Error("no files could be fetched");
+    files.sort((a, b) => (a.name < b.name ? -1 : 1));
+    const blob = buildZip(files);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = zipName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    if (failed > 0) {
+      showZipbarMessage(
+        failed === 1
+          ? "Your ZIP is ready. 1 file could not be included."
+          : `Your ZIP is ready. ${failed} files could not be included.`
+      );
+    }
+  } catch (err) {
+    console.error("zip failed", err);
+    showZipbarMessage("We could not put that ZIP together. Try again in a moment.");
+  } finally {
+    zipRunning = false;
+    if (!zipbarHideTimer) updateZipbar();
+  }
+}
+
+function zipNameFor(jobs) {
+  if (jobs.length === 1) {
+    const used = new Set();
+    return `${zipBaseName(jobs[0], used)}.zip`;
+  }
+  const d = new Date();
+  const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `editions-${stamp}.zip`;
+}
+
+// The small square that picks a ready book into the ZIP tray.
+function renderPick(job) {
+  const picked = pickedIds.has(job.id);
+  const btn = el("button", `pick${picked ? " is-picked" : ""}`);
+  btn.type = "button";
+  btn.setAttribute("aria-pressed", picked ? "true" : "false");
+  btn.setAttribute(
+    "aria-label",
+    `Pick ${job.title || "this edition"} for a ZIP download`
+  );
+  btn.innerHTML =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M4.5 12.5l5 5 10-11"/></svg>';
+  btn.addEventListener("click", () => {
+    const on = pickedIds.has(job.id);
+    if (on) pickedIds.delete(job.id);
+    else pickedIds.add(job.id);
+    btn.classList.toggle("is-picked", !on);
+    btn.setAttribute("aria-pressed", on ? "false" : "true");
+    updateZipbar();
+  });
+  return btn;
+}
+
+function wireZipbar() {
+  zipbarDownload.addEventListener("click", () => {
+    const jobs = currentJobs.filter((j) => pickedIds.has(j.id) && j.status === "ready");
+    const name = zipNameFor(jobs);
+    zipJobs(jobs, name)
+      .then(() => {
+        pickedIds.clear();
+        refreshJobsView(); // unchecks every square; updateZipbar hides the tray
+      })
+      .catch((err) => console.error("zip failed", err));
+  });
+  zipbarClear.addEventListener("click", () => {
+    pickedIds.clear();
+    refreshJobsView();
+  });
+}
+
+// Repaint the jobs list from the data we already have (used when picks are
+// cleared so every checkbox unchecks without a network round trip).
+function refreshJobsView() {
+  renderJobs(currentJobs);
+}
+
 // Group jobs by bulkId while preserving the list's original order. Solo jobs
 // (no bulkId) stay solo; a bulk card is anchored at the position of its first
 // member, so the timeline stays intact.
@@ -585,6 +865,13 @@ function groupJobs(jobs) {
 }
 
 function renderJobs(jobs) {
+  currentJobs = jobs;
+  // Drop picks for books that are gone or no longer ready.
+  const readyIds = new Set(jobs.filter((j) => j.status === "ready").map((j) => j.id));
+  for (const id of [...pickedIds]) {
+    if (!readyIds.has(id)) pickedIds.delete(id);
+  }
+  updateZipbar();
   jobsList.replaceChildren();
   if (jobs.length === 0) {
     jobsCount.hidden = true;
@@ -636,9 +923,11 @@ function renderBulkGroup(group) {
 
   if (ready.length) {
     const allBtn = el("button", "download-btn download-btn--all",
-      ready.length === 1 ? "Download the ready book" : "Download all as separate files");
+      ready.length === 1
+        ? "Download as ZIP, all formats"
+        : `Download all ${ready.length} as ZIP, all formats`);
     allBtn.type = "button";
-    allBtn.addEventListener("click", () => downloadAll(ready, allBtn));
+    allBtn.addEventListener("click", () => zipJobs(ready, zipNameFor(ready)));
     head.appendChild(allBtn);
   }
   card.appendChild(head);
@@ -656,6 +945,8 @@ function renderBulkGroup(group) {
 // when ready. Lighter chrome than a solo job card, since the card frames them.
 function renderBookRow(job) {
   const row = el("div", "book");
+
+  if (job.status === "ready") row.appendChild(renderPick(job));
 
   const main = el("div", "book__main");
   main.appendChild(el("h4", "book__title", job.title || "Untitled scan"));
@@ -682,25 +973,6 @@ function renderBookRow(job) {
   row.appendChild(chip);
 
   return row;
-}
-
-// Download every ready book in the group, one after another. There is no
-// server-side zip yet, so this triggers several separate file downloads; the
-// button label says so. A small gap between clicks keeps the browser from
-// dropping downloads that fire too close together.
-async function downloadAll(readyJobs, button) {
-  button.disabled = true;
-  const restLabel = button.textContent;
-  button.textContent = "Preparing...";
-  try {
-    for (const job of readyJobs) {
-      await downloadArtifact(job, "epub");
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-  } finally {
-    button.disabled = false;
-    button.textContent = restLabel;
-  }
 }
 
 // Poll while anything is still moving; ready and failed are terminal.
@@ -2337,10 +2609,14 @@ async function refreshTranslations() {
 async function loadTranslateData() {
   populateLanguages();
   updateTranslatePrice();
+  if (translationsList.children.length === 0) renderSkeletonList(translationsList);
   try {
     await Promise.all([refreshTranslations(), populateBookChoices()]);
   } catch (err) {
     console.error("failed to load translations", err);
+    translationsList.replaceChildren(
+      el("div", "users__empty", "We could not load your translations. Try again in a moment.")
+    );
   }
 }
 
@@ -2451,11 +2727,30 @@ const FIXTURE_TRANSLATION_MD =
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
+// Calm shimmer placeholders while a list makes its first trip to the server.
+function renderSkeletonList(container, rows = 3) {
+  container.replaceChildren();
+  for (let i = 0; i < rows; i++) {
+    const card = el("div", "skel-card");
+    const main = el("div");
+    main.style.flex = "1";
+    main.appendChild(el("div", "skel skel--title"));
+    main.appendChild(el("div", "skel skel--meta"));
+    card.appendChild(main);
+    card.appendChild(el("div", "skel skel--chip"));
+    container.appendChild(card);
+  }
+}
+
 async function loadAppData() {
+  if (jobsList.children.length === 0) renderSkeletonList(jobsList);
   try {
     await Promise.all([refreshMe(), refreshJobs()]);
   } catch (err) {
     console.error("failed to load account data", err);
+    jobsList.replaceChildren(
+      el("div", "users__empty", "We could not load your editions. Try again in a moment.")
+    );
   }
 }
 
@@ -2528,6 +2823,7 @@ async function boot() {
   wireAdminPanel();
   wireTranslatePanel();
   wireSettingsPanel();
+  wireZipbar();
 
   // Hash routing lives across every signed in view; only #admin (and only for
   // admins) reaches the admin view.
