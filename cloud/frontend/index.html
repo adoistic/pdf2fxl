@@ -178,6 +178,7 @@
           <div class="upload__actions">
             <button id="upload-button" class="btn btn--primary" type="button">Create my edition</button>
             <p class="upload__rate">You'll pay <strong id="rate-per-page">0.7</strong> credits per page, held when the scan starts.</p>
+            <p class="upload__retention">Your original PDF is deleted from our servers minutes after your edition is ready.</p>
           </div>
 
           <div id="upload-progress" class="upload-progress" role="status" hidden>
@@ -223,7 +224,15 @@
             <h2 id="jobs-heading" class="panel__title">Your editions</h2>
             <span id="jobs-count" class="jobs__count" hidden></span>
           </div>
+          <div id="jobs-tools" class="jobs__tools" hidden>
+            <input id="jobs-search" class="field jobs__search" type="search"
+                   placeholder="Search your editions by title" autocomplete="off" spellcheck="false"
+                   aria-label="Search your editions by title">
+          </div>
           <div id="jobs-list" class="jobs__list" aria-live="polite"></div>
+          <div class="jobs__more">
+            <button id="jobs-more" class="download-btn" type="button" hidden>Show more</button>
+          </div>
         </section>
 
       </div>
@@ -303,6 +312,9 @@
             <span id="translations-count" class="jobs__count" hidden></span>
           </div>
           <div id="translations-list" class="jobs__list" aria-live="polite"></div>
+          <div class="jobs__more">
+            <button id="translations-more" class="download-btn" type="button" hidden>Show more</button>
+          </div>
         </section>
 
       </div>

@@ -92,8 +92,15 @@ jobs.post("/", async (c) => {
 });
 
 jobs.get("/", async (c) => {
-  const list = await listJobsForUser(c.env.DB, c.get("user").id);
-  return c.json({ jobs: list.map(publicJob) });
+  const limit = Number(c.req.query("limit") ?? "30");
+  const offset = Number(c.req.query("offset") ?? "0");
+  const q = c.req.query("q") ?? "";
+  const page = await listJobsForUser(c.env.DB, c.get("user").id, {
+    limit: Number.isFinite(limit) ? limit : 30,
+    offset: Number.isFinite(offset) ? offset : 0,
+    q: q.slice(0, 120),
+  });
+  return c.json({ jobs: page.jobs.map(publicJob), total: page.total });
 });
 
 jobs.get("/:id", async (c) => {

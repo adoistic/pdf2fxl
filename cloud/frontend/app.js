@@ -60,6 +60,10 @@ const bulkProcNote = document.getElementById("bulk-proc-note");
 
 const jobsList = document.getElementById("jobs-list");
 const jobsCount = document.getElementById("jobs-count");
+const jobsTools = document.getElementById("jobs-tools");
+const jobsSearch = document.getElementById("jobs-search");
+const jobsMore = document.getElementById("jobs-more");
+const translationsMore = document.getElementById("translations-more");
 
 const translateView = document.getElementById("translate-view");
 const translateLink = document.getElementById("translate-link");
@@ -864,21 +868,42 @@ function groupJobs(jobs) {
   return order;
 }
 
-function renderJobs(jobs) {
+// The list is a window onto a paged, searchable server-side list: an account
+// can hold thousands of editions, so only `jobsWindow` rows are ever loaded,
+// newest first, and "Show more" widens the window (bounded; search narrows).
+const JOBS_PAGE = 30;
+const JOBS_WINDOW_MAX = 200;
+let jobsQuery = "";
+let jobsWindow = JOBS_PAGE;
+let jobsTotal = 0;
+
+function renderJobs(jobs, total = jobsTotal) {
   currentJobs = jobs;
+  jobsTotal = total;
   // Drop picks for books that are gone or no longer ready.
   const readyIds = new Set(jobs.filter((j) => j.status === "ready").map((j) => j.id));
   for (const id of [...pickedIds]) {
     if (!readyIds.has(id)) pickedIds.delete(id);
   }
   updateZipbar();
+  jobsTools.hidden = !(total > 7 || jobsQuery);
   jobsList.replaceChildren();
   if (jobs.length === 0) {
     jobsCount.hidden = true;
-    jobsList.appendChild(renderEmptyState());
+    if (jobsQuery) {
+      jobsList.appendChild(
+        el("div", "users__empty", "No editions match that search.")
+      );
+    } else {
+      jobsList.appendChild(renderEmptyState());
+    }
   } else {
     jobsCount.hidden = false;
-    jobsCount.textContent = jobs.length === 1 ? "1 edition" : `${jobs.length} editions`;
+    if (total > jobs.length) {
+      jobsCount.textContent = `Showing ${jobs.length} of ${total.toLocaleString("en")}`;
+    } else {
+      jobsCount.textContent = total === 1 ? "1 edition" : `${total.toLocaleString("en")} editions`;
+    }
     for (const entry of groupJobs(jobs)) {
       if (entry.solo) {
         jobsList.appendChild(renderJob(entry.solo));
@@ -886,6 +911,11 @@ function renderJobs(jobs) {
         jobsList.appendChild(renderBulkGroup(entry.group));
       }
     }
+  }
+  const canGrow = total > jobs.length && jobsWindow < JOBS_WINDOW_MAX;
+  jobsMore.hidden = !canGrow;
+  if (total > jobs.length && jobsWindow >= JOBS_WINDOW_MAX) {
+    jobsCount.textContent += "  ·  search to narrow it down";
   }
   updateProcessingIndicator(jobs);
   schedulePoll(jobs);
@@ -991,9 +1021,43 @@ function schedulePoll(jobs) {
   }, POLL_MS);
 }
 
+// In fixture mode the "server side" of search and paging runs right here over
+// the canned list, so the states can be exercised without a backend.
+let fixtureAllJobs = null;
+
 async function refreshJobs() {
-  const data = await api("/api/jobs");
-  renderJobs(data.jobs || []);
+  if (previewFixtures && fixtureAllJobs) {
+    const q = jobsQuery.trim().toLowerCase();
+    const matched = q
+      ? fixtureAllJobs.filter((j) => (j.title || "").toLowerCase().includes(q))
+      : fixtureAllJobs;
+    renderJobs(matched.slice(0, jobsWindow), matched.length);
+    return;
+  }
+  const params = new URLSearchParams({ limit: String(Math.min(jobsWindow, JOBS_WINDOW_MAX)) });
+  if (jobsQuery.trim()) params.set("q", jobsQuery.trim());
+  const data = await api(`/api/jobs?${params.toString()}`);
+  renderJobs(data.jobs || [], data.total ?? (data.jobs || []).length);
+}
+
+function wireJobsListTools() {
+  let debounce = null;
+  jobsSearch.addEventListener("input", () => {
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      debounce = null;
+      jobsQuery = jobsSearch.value;
+      jobsWindow = JOBS_PAGE; // a new search starts from the top
+      refreshJobs().catch((err) => console.error("search failed", err));
+    }, 300);
+  });
+  jobsMore.addEventListener("click", () => {
+    jobsWindow = Math.min(jobsWindow + JOBS_PAGE, JOBS_WINDOW_MAX);
+    jobsMore.disabled = true;
+    refreshJobs()
+      .catch((err) => console.error("show more failed", err))
+      .finally(() => { jobsMore.disabled = false; });
+  });
 }
 
 function sentence(text) {
@@ -2567,7 +2631,11 @@ function renderTranslationRow(t) {
   return row;
 }
 
-function renderTranslations(list) {
+let translationsWindow = 30;
+let translationsTotal = 0;
+
+function renderTranslations(list, total = translationsTotal) {
+  translationsTotal = total;
   translationsList.replaceChildren();
   if (list.length === 0) {
     translationsCount.hidden = true;
@@ -2579,9 +2647,12 @@ function renderTranslations(list) {
   } else {
     translationsCount.hidden = false;
     translationsCount.textContent =
-      list.length === 1 ? "1 translation" : `${list.length} translations`;
+      total > list.length
+        ? `Showing ${list.length} of ${total.toLocaleString("en")}`
+        : total === 1 ? "1 translation" : `${total.toLocaleString("en")} translations`;
     for (const t of list) translationsList.appendChild(renderTranslationRow(t));
   }
+  translationsMore.hidden = !(total > list.length && translationsWindow < 200);
   stopTranslatePolling();
   if (previewFixtures) return;
   if (list.some((t) => t.status === "received" || t.status === "processing")) {
@@ -2599,11 +2670,11 @@ function renderTranslations(list) {
 
 async function refreshTranslations() {
   if (previewFixtures) {
-    renderTranslations(FIXTURE_TRANSLATIONS);
+    renderTranslations(FIXTURE_TRANSLATIONS, FIXTURE_TRANSLATIONS.length);
     return;
   }
-  const data = await api("/api/translate");
-  renderTranslations(data.translations || []);
+  const data = await api(`/api/translate?limit=${Math.min(translationsWindow, 200)}`);
+  renderTranslations(data.translations || [], data.total ?? 0);
 }
 
 async function loadTranslateData() {
@@ -2679,6 +2750,10 @@ async function downloadTranslation(t, format, button) {
 }
 
 function wireTranslatePanel() {
+  translationsMore.addEventListener("click", () => {
+    translationsWindow = Math.min(translationsWindow + 30, 200);
+    refreshTranslations().catch((err) => console.error("show more failed", err));
+  });
   trTabText.addEventListener("click", () => setTranslateTab("text"));
   trTabBook.addEventListener("click", () => setTranslateTab("book"));
   translateText.addEventListener("input", updateTranslatePrice);
@@ -2824,6 +2899,16 @@ async function boot() {
   wireTranslatePanel();
   wireSettingsPanel();
   wireZipbar();
+  wireJobsListTools();
+
+  // A tab that sat in the background catches up the moment it is looked at,
+  // so two-tab sessions see fresh balances and statuses (the server's atomic
+  // hold is the real guard; this keeps the display honest).
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !sessionReady || previewFixtures) return;
+    refreshMe().catch(() => {});
+    refreshJobs().catch(() => {});
+  });
 
   // Hash routing lives across every signed in view; only #admin (and only for
   // admins) reaches the admin view.
@@ -2840,7 +2925,17 @@ async function boot() {
     let fixtureJobs = FIXTURE_JOBS;
     if (location.search.includes("preview-fixtures=empty")) fixtureJobs = [];
     else if (location.search.includes("preview-fixtures=waiting")) fixtureJobs = FIXTURE_JOBS_WAITING;
-    renderJobs(fixtureJobs);
+    else if (location.search.includes("preview-fixtures=many")) {
+      // A big library, to exercise search and the show-more window.
+      fixtureJobs = Array.from({ length: 87 }, (_, i) => ({
+        id: `fx-m${i}`, bulkId: null, mode: "reflow",
+        status: i % 9 === 0 ? "processing" : "ready",
+        title: `${["Annals", "Chronicle", "Grammar", "Atlas", "Reader"][i % 5]} of volume ${i + 1}`,
+        pageCount: 90 + i, error: null, createdAt: agoIso((i + 1) * 60 * 1000),
+      }));
+    }
+    fixtureAllJobs = fixtureJobs;
+    await refreshJobs();
     sessionReady = true;
     if (location.search.includes("preview-fixtures=admin")) {
       renderUsers(FIXTURE_USERS);

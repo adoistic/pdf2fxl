@@ -157,8 +157,16 @@ translate.post("/", async (c) => {
 });
 
 translate.get("/", async (c) => {
-  const list = await listTranslationsForUser(c.env.DB, c.get("user").id);
-  return c.json({ translations: list.map(publicTranslation) });
+  const limit = Number(c.req.query("limit") ?? "30");
+  const offset = Number(c.req.query("offset") ?? "0");
+  const page = await listTranslationsForUser(c.env.DB, c.get("user").id, {
+    limit: Number.isFinite(limit) ? limit : 30,
+    offset: Number.isFinite(offset) ? offset : 0,
+  });
+  return c.json({
+    translations: page.translations.map(publicTranslation),
+    total: page.total,
+  });
 });
 
 translate.get("/:id", async (c) => {

@@ -92,17 +92,33 @@ export async function getTranslation(db: D1Database, id: string): Promise<Transl
   return row ? toTranslation(row) : null;
 }
 
+export interface TranslationPage {
+  translations: Translation[];
+  total: number;
+}
+
+// Paged like the jobs list: newest first, bounded window, total for the label.
 export async function listTranslationsForUser(
-  db: D1Database, userId: number
-): Promise<Translation[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT ${COLS} FROM translations WHERE user_id = ?1
-       ORDER BY created_at DESC, id DESC LIMIT 100`
-    )
-    .bind(userId)
-    .all<Row>();
-  return results.map(toTranslation);
+  db: D1Database,
+  userId: number,
+  opts: { limit?: number; offset?: number } = {}
+): Promise<TranslationPage> {
+  const limit = Math.min(Math.max(1, opts.limit ?? 30), 200);
+  const offset = Math.max(0, opts.offset ?? 0);
+  const [{ results }, count] = await Promise.all([
+    db
+      .prepare(
+        `SELECT ${COLS} FROM translations WHERE user_id = ?1
+         ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3`
+      )
+      .bind(userId, limit, offset)
+      .all<Row>(),
+    db
+      .prepare("SELECT COUNT(*) AS n FROM translations WHERE user_id = ?1")
+      .bind(userId)
+      .first<{ n: number }>(),
+  ]);
+  return { translations: results.map(toTranslation), total: count?.n ?? 0 };
 }
 
 // Extra columns settable on transition. Keys are whitelisted, never caller

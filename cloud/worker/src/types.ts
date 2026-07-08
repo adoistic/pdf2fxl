@@ -1,5 +1,6 @@
-// One queue carries both OCR jobs and translations; exactly one id is set.
-export type QueueMsg = { jobId?: string; translationId?: string };
+// One queue carries OCR jobs, translations, and delayed upload cleanups;
+// exactly one id is set per message.
+export type QueueMsg = { jobId?: string; translationId?: string; cleanupJobId?: string };
 
 export interface Env {
   DB: D1Database;

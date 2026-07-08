@@ -7,6 +7,7 @@ import { jobs } from "./routes/jobs";
 import { translate } from "./routes/translate";
 import { branding } from "./routes/branding";
 import { handleQueue } from "./finalize";
+import { sweep } from "./sweep";
 import { r2DirectEnabled } from "./presign";
 import { enrichConfig } from "./enrich";
 import { translateConfig } from "./translate";
@@ -86,9 +87,16 @@ app.route("/api/branding", branding);
 app.use("/api/admin/*", authRequired, adminRequired);
 app.route("/api/admin", admin);
 
-// A Worker with a queue consumer needs a default export object with both fetch
-// and queue handlers. The Hono app is exported named so route tests can still
-// call app.request(...).
+// Hourly housekeeping: fail stuck work and give the credits back, settle
+// holds a crash left dangling, delete originals of delivered editions.
+async function scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+  const report = await sweep(env);
+  console.log("sweep", JSON.stringify(report));
+}
+
+// A Worker with a queue consumer needs a default export object with fetch,
+// queue, and scheduled handlers. The Hono app is exported named so route
+// tests can still call app.request(...).
 export { app };
-export default { fetch: app.fetch, queue: handleQueue };
+export default { fetch: app.fetch, queue: handleQueue, scheduled };
 export { OcrEngine } from "./container";

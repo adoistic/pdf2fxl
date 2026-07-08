@@ -5,6 +5,7 @@ import { r2DirectEnabled, presignGet } from "./presign";
 import { enrichConfig } from "./enrich";
 import { translateConfig, translateKey } from "./translate";
 import { failTranslation, getTranslation, transitionTranslation, type Translation } from "./translations";
+import { cleanupUpload } from "./sweep";
 
 // The container call is injected so tests need no container or Mistral: the
 // queue handler passes the real container fetch, tests pass a stub returning
@@ -157,8 +158,14 @@ export async function finalizeJob(
       }
     }
     await transition(env.DB, jobId, "processing", "ready");
-    // Keep the original for ~72h after the result so a bad render can be
-    // reprocessed; an R2 lifecycle rule on the uploads/ prefix expires it.
+    // The original PDF serves nothing once results exist and only costs
+    // storage: a delayed message deletes it ~10 minutes after delivery.
+    // Best-effort here; the hourly sweep and the R2 lifecycle rule back it up.
+    try {
+      await env.OCR_QUEUE.send({ cleanupJobId: jobId }, { delaySeconds: 600 });
+    } catch (err) {
+      console.error("cleanup enqueue failed", err);
+    }
     return "ready";
   } catch (err) {
     await failJob(
@@ -332,6 +339,8 @@ export async function handleQueue(
       await finalizeTranslation(env, msg.body.translationId, realTranslate(env));
     } else if (msg.body.jobId) {
       await finalizeJob(env, msg.body.jobId, process);
+    } else if (msg.body.cleanupJobId) {
+      await cleanupUpload(env, msg.body.cleanupJobId);
     }
     msg.ack();
   }

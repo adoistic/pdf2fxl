@@ -218,7 +218,10 @@ describe("route gating (hidden per user)", () => {
     await enableTranslateFor("tr@test.dev");
     const res = await get("/api/translate", token);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ translations: expect.any(Array) });
+    expect(await res.json()).toEqual({
+      translations: expect.any(Array),
+      total: expect.any(Number),
+    });
 
     const me = await get("/api/me", token);
     const body = (await me.json()) as { translate: { maxWords: number; blockCredits: number } };

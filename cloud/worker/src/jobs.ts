@@ -67,12 +67,52 @@ export async function getJobForUser(db: D1Database, id: string, userId: number):
   return row ? toJob(row) : null;
 }
 
-export async function listJobsForUser(db: D1Database, userId: number): Promise<Job[]> {
-  const { results } = await db
-    .prepare(`SELECT ${COLS} FROM jobs WHERE user_id = ?1 ORDER BY created_at DESC, id DESC`)
-    .bind(userId)
-    .all<JobRow>();
-  return results.map(toJob);
+export interface JobPage {
+  jobs: Job[];
+  total: number;
+}
+
+export interface ListOpts {
+  limit?: number;
+  offset?: number;
+  q?: string;
+}
+
+// Escape LIKE wildcards in user input so a search for "50%" matches literally.
+export function likePattern(q: string): string {
+  return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+// Paged, searchable list. An account can hold thousands of editions, so the
+// full list never crosses the wire: newest first, bounded page, total for the
+// "N of M" label and the show-more button.
+export async function listJobsForUser(
+  db: D1Database,
+  userId: number,
+  opts: ListOpts = {}
+): Promise<JobPage> {
+  const limit = Math.min(Math.max(1, opts.limit ?? 30), 200);
+  const offset = Math.max(0, opts.offset ?? 0);
+  const q = (opts.q ?? "").trim();
+  const where = q
+    ? "user_id = ?1 AND title LIKE ?2 ESCAPE '\\'"
+    : "user_id = ?1";
+  const binds: (string | number)[] = q ? [userId, likePattern(q)] : [userId];
+  const [{ results }, count] = await Promise.all([
+    db
+      .prepare(
+        `SELECT ${COLS} FROM jobs WHERE ${where}
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?${binds.length + 1} OFFSET ?${binds.length + 2}`
+      )
+      .bind(...binds, limit, offset)
+      .all<JobRow>(),
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM jobs WHERE ${where}`)
+      .bind(...binds)
+      .first<{ n: number }>(),
+  ]);
+  return { jobs: results.map(toJob), total: count?.n ?? 0 };
 }
 
 // Extra columns settable on transition. Keys are whitelisted, never caller input.

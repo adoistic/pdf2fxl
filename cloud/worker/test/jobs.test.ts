@@ -15,7 +15,7 @@ describe("jobs module", () => {
     expect(job.status).toBe("received");
     expect((await getJobForUser(env.DB, job.id, owner))?.id).toBe(job.id);
     expect(await getJobForUser(env.DB, job.id, stranger)).toBeNull();
-    expect((await listJobsForUser(env.DB, owner)).map((j) => j.id)).toEqual([job.id]);
+    expect((await listJobsForUser(env.DB, owner)).jobs.map((j) => j.id)).toEqual([job.id]);
   });
 
   it("transitions only from the expected state", async () => {
@@ -68,7 +68,7 @@ describe("jobs module: bulk grouping", () => {
     expect(a.bulkId).toBe(bulkId);
     expect(b.bulkId).toBe(bulkId);
     expect(solo.bulkId).toBeNull();
-    const all = await listJobsForUser(env.DB, owner);
+    const all = (await listJobsForUser(env.DB, owner)).jobs;
     const inBulk = all.filter((j) => j.bulkId === bulkId).map((j) => j.title).sort();
     expect(inBulk).toEqual(["A", "B"]);
   });

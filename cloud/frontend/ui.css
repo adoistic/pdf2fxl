@@ -1121,3 +1121,12 @@ input{font:inherit}
 @media (max-width:639px){
   .zipbar{border-radius:18px; width:92vw; justify-content:center}
 }
+
+/* ---- big libraries: search over the list, show-more window ------------------*/
+.jobs__tools{margin:0 0 14px}
+.jobs__search{min-height:44px; max-width:420px}
+.jobs__more{margin-top:16px; text-align:center}
+.upload__retention{
+  margin-top:10px; text-align:center;
+  font-size:12.5px; line-height:1.5; color:var(--body); opacity:.85;
+}

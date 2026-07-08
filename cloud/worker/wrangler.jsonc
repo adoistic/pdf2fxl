@@ -49,6 +49,9 @@
         "dead_letter_queue": "ocr-jobs-dlq" }
     ]
   },
+  // Hourly housekeeping sweep: stuck work failed + refunded, dangling holds
+  // settled, delivered originals deleted (see src/sweep.ts).
+  "triggers": { "crons": ["17 * * * *"] },
   // Keep the workers.dev URL live. Adding custom routes otherwise disables it.
   "workers_dev": true,
   "vars": {
