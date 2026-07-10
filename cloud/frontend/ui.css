@@ -1130,3 +1130,12 @@ input{font:inherit}
   margin-top:10px; text-align:center;
   font-size:12.5px; line-height:1.5; color:var(--body); opacity:.85;
 }
+
+/* ── Embed mode (opt-in, ?embed=1) ──────────────────────────────────────────
+   White-label chrome for an external wrapper that frames the app under its own
+   brand. Only active when <html> carries .embed (set by the head script). The
+   standard ocrwithai.com experience never matches these rules. Hides the
+   Thothica lockup on the login screen and in the app bar; the host wrapper
+   supplies its own branding around the frame. */
+html.embed .login__brand{display:none}
+html.embed .app__logo{display:none}

@@ -5,6 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Thothica OCR</title>
   <meta name="description" content="Clean digital editions from any scan.">
+  <!-- Opt-in embed chrome for external white-label wrappers (?embed=1). Runs early
+       so the logo never flashes before CSS hides it. Fully gated: when the flag is
+       absent (a normal ocrwithai.com visit) this is a no-op and the app is untouched.
+       The flag is remembered per tab so it survives the sign-in redirect. -->
+  <script>
+    (function () {
+      try {
+        var on = new URLSearchParams(location.search).has("embed") ||
+                 sessionStorage.getItem("pk_embed") === "1";
+        if (!on) return;
+        sessionStorage.setItem("pk_embed", "1");
+        document.documentElement.classList.add("embed");
+        document.addEventListener("DOMContentLoaded", function () {
+          document.querySelectorAll("[data-embed-text]").forEach(function (el) {
+            el.textContent = el.getAttribute("data-embed-text");
+          });
+        });
+      } catch (e) {}
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Teachers:ital,wght@0,400;0,600;0,700;0,800&display=swap" rel="stylesheet">
@@ -23,7 +43,7 @@
 
         <p class="eyebrow reveal d2">AI-native knowledge infrastructure<span class="rule-gold"></span></p>
         <h1 class="login__headline reveal d2">Clean digital editions from <em>any</em> scan.</h1>
-        <p class="login__lead reveal d3">Upload a scanned book. Thothica measures the type on every page, recovers the real chapter structure, and returns a clean reflowable edition.</p>
+        <p class="login__lead reveal d3" data-embed-text="Upload a scanned book. The engine measures the type on every page, recovers the real chapter structure, and returns a clean reflowable edition.">Upload a scanned book. Thothica measures the type on every page, recovers the real chapter structure, and returns a clean reflowable edition.</p>
 
         <div class="auth-card reveal d4">
           <button id="google-signin-button" class="btn btn--google" type="button">
@@ -86,7 +106,7 @@
           </svg>
           <p class="figure-card__cap">Body text carries the most character mass, so its size anchors the scale. The larger clusters become your heading levels.</p>
         </div>
-        <p class="login__figure-note">This is how Thothica finds real chapters in scanned pages.</p>
+        <p class="login__figure-note" data-embed-text="This is how the engine finds real chapters in scanned pages.">This is how Thothica finds real chapters in scanned pages.</p>
       </aside>
 
     </div>
@@ -364,7 +384,14 @@
 
         <section class="panel panel--settings reveal d1" aria-labelledby="settings-heading">
           <h2 id="settings-heading" class="panel__title">Make it yours</h2>
-          <p class="panel__sub">Your own logo, colors and type, across the whole app, for your account.</p>
+          <p class="panel__sub">Your own name, logo, colors and type, across the whole app, for your account.</p>
+
+          <div class="upload__field">
+            <label class="field-label" for="brand-name">Name</label>
+            <input id="brand-name" class="field" type="text" maxlength="60"
+                   autocomplete="off" spellcheck="false" placeholder="Thothica OCR">
+            <p class="field-hint">The name the app calls itself &mdash; it sets the browser tab title. Leave blank to keep the standard name.</p>
+          </div>
 
           <div class="upload__field">
             <span class="field-label">Logo</span>

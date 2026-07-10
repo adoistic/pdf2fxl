@@ -18,6 +18,12 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd cloud/frontend && python3 -m http.server 8091"],
       "port": 8091
+    },
+    {
+      "name": "pareeksa-wrapper",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd /Users/siraj/pareeksa-ocr && python3 -m http.server 8092"],
+      "port": 8092
     }
   ]
 }
