@@ -36,7 +36,7 @@ async function enableBranding() {
 
 const DEFAULTS = {
   brandColor: null, accentColor: null, backgroundColor: null,
-  font: null, hasLogo: false, logoType: null,
+  font: null, productName: null, hasLogo: false, logoType: null,
 };
 
 describe("branding gate", () => {
@@ -84,6 +84,38 @@ describe("branding settings", () => {
       ...DEFAULTS, brandColor: "#1a2b3c", accentColor: "#c0ffee",
       font: "playfair-inter",
     });
+  });
+
+  it("saves, trims, and clears the product name", async () => {
+    await enableBranding();
+    const put = await req("/api/branding", token, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ productName: "  Acme   Reader  " }),
+    });
+    expect(put.status).toBe(200);
+    // surrounding trimmed, inner whitespace collapsed
+    expect(((await put.json()) as { productName: string }).productName).toBe("Acme Reader");
+    // blank clears it back to the standard name
+    const cleared = await req("/api/branding", token, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ productName: "   " }),
+    });
+    expect(((await cleared.json()) as { productName: unknown }).productName).toBeNull();
+  });
+
+  it("rejects an over-long or control-laden product name", async () => {
+    await enableBranding();
+    const NUL = String.fromCharCode(0), BELL = String.fromCharCode(7);
+    for (const productName of ["x".repeat(61), "Acme" + NUL + "Reader", "Bell" + BELL + "Co"]) {
+      const res = await req("/api/branding", token, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ productName }),
+      });
+      expect(res.status).toBe(400);
+    }
   });
 
   it("rejects junk colors and unknown fonts", async () => {

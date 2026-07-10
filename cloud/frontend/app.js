@@ -106,6 +106,7 @@ const brandColorHex = document.getElementById("brand-color-hex");
 const accentColorHex = document.getElementById("accent-color-hex");
 const backgroundColorHex = document.getElementById("background-color-hex");
 const brandFontSelect = document.getElementById("brand-font");
+const brandNameInput = document.getElementById("brand-name");
 const brandSave = document.getElementById("brand-save");
 const brandReset = document.getElementById("brand-reset");
 const brandStatus = document.getElementById("brand-status");
@@ -2001,6 +2002,10 @@ const BRAND_DEFAULTS = {
   backgroundColor: "#FCFCFA",
 };
 
+// The standard name the app calls itself. A branding-enabled reader can set
+// their own; it drives the browser-tab title and the logo's alt text.
+const DEFAULT_PRODUCT_NAME = "Thothica OCR";
+
 // Curated font pairs. Keys must match the server's whitelist; each maps to a
 // serif (headings) + sans (interface) family and the webfont stylesheet that
 // carries them. "thothica" is the standard look (fonts already loaded).
@@ -2088,6 +2093,16 @@ function setBrandLogo(url) {
   }
 }
 
+// Set the app's name: the browser-tab title and the logo images' alt text.
+// Passing a blank name restores the standard "Thothica OCR".
+function setBrandName(name) {
+  const label = (name && String(name).trim()) || DEFAULT_PRODUCT_NAME;
+  document.title = label;
+  for (const img of document.querySelectorAll(".app__logo")) {
+    img.alt = label;
+  }
+}
+
 // Fetch the reader's uploaded logo (the <img> cannot carry the bearer token).
 async function loadBrandLogo() {
   try {
@@ -2133,6 +2148,7 @@ function applyBranding(b, { skipLogo = false } = {}) {
     for (const v of ["--page", "--cream", "--tile"]) root.removeProperty(v);
   }
   setBrandFonts(b && b.font);
+  setBrandName(b && b.productName);
   if (!skipLogo) {
     if (b && b.hasLogo) {
       if (brandLogoBlobUrl) setBrandLogo(brandLogoBlobUrl);
@@ -2174,6 +2190,7 @@ function fillSettingsForm() {
   accentColorHex.value = accentColorInput.value;
   backgroundColorHex.value = backgroundColorInput.value;
   brandFontSelect.value = b.font || "thothica";
+  brandNameInput.value = b.productName || "";
   brandLogoRemove.hidden = !(b.hasLogo);
 }
 
@@ -2186,6 +2203,7 @@ function settingsFormPatch() {
     accentColor: norm(accentColorInput.value, BRAND_DEFAULTS.accentColor),
     backgroundColor: norm(backgroundColorInput.value, BRAND_DEFAULTS.backgroundColor),
     font: brandFontSelect.value === "thothica" ? null : brandFontSelect.value,
+    productName: brandNameInput.value.trim() || null,
   };
 }
 
@@ -2330,6 +2348,7 @@ function wireSettingsPanel() {
   wireColorField(accentColorInput, accentColorHex);
   wireColorField(backgroundColorInput, backgroundColorHex);
   brandFontSelect.addEventListener("change", previewSettingsForm);
+  brandNameInput.addEventListener("input", previewSettingsForm);
   brandSave.addEventListener("click", () => {
     saveBranding().catch((err) => console.error("save branding failed", err));
   });

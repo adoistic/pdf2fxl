@@ -40,6 +40,7 @@ branding.put("/", async (c) => {
     accentColor: body.accentColor,
     backgroundColor: body.backgroundColor,
     font: body.font,
+    productName: body.productName,
   };
   const problem = validatePatch(patch);
   if (problem) return c.json({ error: problem }, 400);
